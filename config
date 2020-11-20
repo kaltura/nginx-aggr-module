@@ -1,0 +1,87 @@
+ngx_addon_name=ngx_aggr_module
+ngx_module_libs=
+
+# rdkafka
+#
+ngx_feature="librdkafka"
+ngx_feature_name="NGX_HAVE_LIBRDKAFKA"
+ngx_feature_run=no
+ngx_feature_incs="#include <librdkafka/rdkafka.h>"
+ngx_feature_path=
+ngx_feature_libs="-lrdkafka"
+ngx_feature_test="rd_kafka_new(RD_KAFKA_PRODUCER, NULL, NULL, 0);"
+. auto/feature
+
+if [ $ngx_found = yes ]; then
+    ngx_module_libs="$ngx_module_libs $ngx_feature_libs"
+fi
+
+
+# sources
+#
+AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr_output.h               \
+                $ngx_addon_dir/src/ngx_aggr_query.h                \
+                $ngx_addon_dir/src/ngx_aggr_result.h               \
+                $ngx_addon_dir/src/ngx_aggr_window.h               \
+                $ngx_addon_dir/src/ngx_dgram.h                     \
+                $ngx_addon_dir/src/ngx_dgram_aggr_module.h         \
+                $ngx_addon_dir/src/ngx_dgram_script.h              \
+                $ngx_addon_dir/src/ngx_dgram_variables.h           \
+                $ngx_addon_dir/src/ngx_json_parser.h               \
+                $ngx_addon_dir/src/ngx_kafka_producer.h            \
+                $ngx_addon_dir/src/ngx_rate_limit.h                \
+                $ngx_addon_dir/src/ngx_str_table.h                 \
+                "
+
+AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr_output.c               \
+                $ngx_addon_dir/src/ngx_aggr_query.c                \
+                $ngx_addon_dir/src/ngx_aggr_result.c               \
+                $ngx_addon_dir/src/ngx_aggr_window.c               \
+                $ngx_addon_dir/src/ngx_dgram.c                     \
+                $ngx_addon_dir/src/ngx_dgram_aggr_module.c         \
+                $ngx_addon_dir/src/ngx_dgram_core_module.c         \
+                $ngx_addon_dir/src/ngx_dgram_script.c              \
+                $ngx_addon_dir/src/ngx_dgram_variables.c           \
+                $ngx_addon_dir/src/ngx_json_parser.c               \
+                $ngx_addon_dir/src/ngx_kafka_producer.c            \
+                $ngx_addon_dir/src/ngx_str_table.c                 \
+                "
+
+AGGR_CORE_MODS="ngx_kafka_producer_module                          \
+                ngx_dgram_module                                   \
+                ngx_dgram_core_module                              \
+                ngx_dgram_aggr_module                              \
+                "
+
+AGGR_HTTP_DEPS=
+
+AGGR_HTTP_SRCS="$ngx_addon_dir/src/ngx_http_aggr_module.c          \
+                "
+
+AGGR_HTTP_MODS="ngx_http_aggr_module                               \
+                "
+
+
+if [ -n "$ngx_module_link" ]; then
+    ngx_module_type=CORE
+    ngx_module_name="$AGGR_CORE_MODS"
+    ngx_module_deps="$AGGR_CORE_DEPS"
+    ngx_module_srcs="$AGGR_CORE_SRCS"
+
+    . auto/module
+
+    ngx_module_type=HTTP
+    ngx_module_name="$AGGR_HTTP_MODS"
+    ngx_module_deps="$AGGR_HTTP_DEPS"
+    ngx_module_srcs="$AGGR_HTTP_SRCS"
+
+    . auto/module
+
+else
+    CORE_MODULES="$CORE_MODULES $AGGR_CORE_MODS"
+    HTTP_MODULES="$HTTP_MODULES $AGGR_HTTP_MODS"
+
+    NGX_ADDON_DEPS="$NGX_ADDON_DEPS $AGGR_CORE_DEPS $AGGR_HTTP_DEPS"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $AGGR_CORE_SRCS $AGGR_HTTP_SRCS"
+    CORE_LIBS="$CORE_LIBS $ngx_module_libs"
+fi
