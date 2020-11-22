@@ -409,6 +409,9 @@ ngx_dgram_aggr_init_worker(ngx_cycle_t *cycle)
     ngx_dgram_core_main_conf_t   *cmcf;
 
     cmcf = ngx_dgram_cycle_get_module_main_conf(cycle, ngx_dgram_core_module);
+    if (cmcf == NULL) {
+        return NGX_OK;
+    }
 
     cscfp = cmcf->servers.elts;
     for (i = 0; i < cmcf->servers.nelts; i++) {

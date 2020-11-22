@@ -326,6 +326,7 @@ ngx_dgram_init_listening(ngx_cycle_t *cycle, void *conf)
     ngx_uint_t                   orig_flags;
     ngx_cycle_t                 *old_cycle;
     ngx_cycle_t                  dummy_cycle;
+    ngx_array_t                  listening;
     ngx_array_t                  old_listening;
     ngx_listening_t             *ls, *nls;
     ngx_dgram_core_main_conf_t  *old_cmcf;
@@ -348,6 +349,13 @@ ngx_dgram_init_listening(ngx_cycle_t *cycle, void *conf)
     }
 
     cmcf = ngx_dgram_cycle_get_module_main_conf(cycle, ngx_dgram_core_module);
+    if (cmcf != NULL) {
+        listening = cmcf->listening;
+
+    } else {
+        listening.nelts = 0;
+        listening.elts = NULL;
+    }
 
     /* Note: code copied from ngx_init_cycle */
 
@@ -359,8 +367,8 @@ ngx_dgram_init_listening(ngx_cycle_t *cycle, void *conf)
             ls[i].remain = 0;
         }
 
-        nls = cmcf->listening.elts;
-        for (n = 0; n < cmcf->listening.nelts; n++) {
+        nls = listening.elts;
+        for (n = 0; n < listening.nelts; n++) {
 
             for (i = 0; i < old_listening.nelts; i++) {
                 if (ls[i].ignore) {
@@ -449,8 +457,8 @@ ngx_dgram_init_listening(ngx_cycle_t *cycle, void *conf)
         }
 
     } else {
-        ls = cmcf->listening.elts;
-        for (i = 0; i < cmcf->listening.nelts; i++) {
+        ls = listening.elts;
+        for (i = 0; i < listening.nelts; i++) {
             ls[i].open = 1;
 #if (NGX_HAVE_DEFERRED_ACCEPT && defined SO_ACCEPTFILTER)
             if (ls[i].accept_filter) {
@@ -468,7 +476,7 @@ ngx_dgram_init_listening(ngx_cycle_t *cycle, void *conf)
     /* trick ngx_open_listening_sockets to process cmcf sockets */
 
     dummy_cycle.log = cycle->log;
-    dummy_cycle.listening = cmcf->listening;
+    dummy_cycle.listening = listening;
 
     /* enable iocp flag to avoid setting the socket as nonblocking */
 
@@ -842,6 +850,9 @@ ngx_dgram_init_worker(ngx_cycle_t *cycle)
     ngx_dgram_core_main_conf_t  *cmcf;
 
     cmcf = ngx_dgram_cycle_get_module_main_conf(cycle, ngx_dgram_core_module);
+    if (cmcf == NULL) {
+        return NGX_OK;
+    }
 
     ls = cmcf->listening.elts;
     for (i = 0; i < cmcf->listening.nelts; i++) {
