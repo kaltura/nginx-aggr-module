@@ -24,9 +24,15 @@ typedef struct ngx_aggr_event_s  ngx_aggr_event_t;
 struct ngx_aggr_event_s {
     ngx_rbtree_node_t         node;
     ngx_aggr_event_t         *next;
-    ngx_uint_t                group_dims;
-    ngx_str_t               **dims;
-    double                   *metrics;
+    size_t                    group_size;
+    u_char                    data[1];
+
+    /*
+      data =
+    ngx_str_t                *group_dims[group_size / sizeof(void *)];
+    ngx_str_t                *select_dims[select_size / sizeof(void *)];
+    double                    metrics[...];
+    */
 };
 
 
@@ -39,17 +45,15 @@ struct ngx_aggr_result_s {
     size_t                    buf_size;
 
     ngx_aggr_query_t         *query;
-    ngx_uint_t                group_dims;
-    ngx_uint_t                select_dims;
-    ngx_uint_t                event_dims;
-    ngx_uint_t                event_metrics;
+    size_t                    group_size;
+    size_t                    select_size;
     size_t                    event_size;
 
     ngx_rbtree_t              rbtree;
     ngx_rbtree_node_t         sentinel;
     ngx_aggr_event_t         *head;
     ngx_aggr_event_t         *cur;
-    ngx_aggr_event_t         *default_event;
+    u_char                   *default_event;
 
     u_char                    time_buf[NGX_ISO8601_TIMESTAMP_LEN];
     size_t                    time_len;
@@ -101,9 +105,7 @@ ngx_aggr_event_alloc(ngx_aggr_result_t *ar)
         return NGX_ERROR;
     }
 
-    event->group_dims = ar->group_dims;
-    event->dims = (void *) (event + 1);
-    event->metrics = (void *) (event->dims + ar->event_dims);
+    event->group_size = ar->group_size;
     ar->cur = event;
 
     return NGX_OK;
@@ -112,16 +114,20 @@ ngx_aggr_event_alloc(ngx_aggr_result_t *ar)
 static int
 ngx_aggr_event_compare(ngx_aggr_event_t *event1, ngx_aggr_event_t *event2)
 {
-    ngx_uint_t  i;
+    size_t      off;
+    ngx_str_t  *s1, *s2;
 
-    for (i = 0; i < event1->group_dims; i++) {
+    for (off = 0; off < event1->group_size; off += sizeof(s1)) {
+
+        s1 = *(ngx_str_t **) (event1->data + off);
+        s2 = *(ngx_str_t **) (event2->data + off);
 
         /* Note: dims are from string table, can just compare the ptrs */
-        if (event1->dims[i] < event2->dims[i]) {
+        if (s1 < s2) {
             return -1;
         }
 
-        if (event1->dims[i] > event2->dims[i]) {
+        if (s1 > s2) {
             return 1;
         }
     }
@@ -488,23 +494,24 @@ static ngx_int_t
 ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
     ngx_aggr_result_t *ar)
 {
-    double                     metric_value;
-    ngx_str_t                  str;
-    ngx_str_t                 *dim_value;
-    ngx_uint_t                 i;
-    ngx_uint_t                 idx;
-    ngx_uint_t                 hash;
-    ngx_array_t               *outputs;
-    ngx_aggr_event_t          *event;
-    ngx_aggr_query_t          *query;
-    ngx_aggr_query_dim_t     **dims;
-    ngx_aggr_query_metric_t  **metrics;
+    size_t                         off;
+    double                        *dst_dbl;
+    double                         metric_value;
+    ngx_str_t                      str;
+    ngx_str_t                    **dst_str;
+    ngx_str_t                     *dim_value;
+    ngx_uint_t                     i;
+    ngx_uint_t                     hash;
+    ngx_array_t                   *outputs;
+    ngx_aggr_event_t              *event;
+    ngx_aggr_query_t              *query;
+    ngx_aggr_query_dim_in_t      **dims;
+    ngx_aggr_query_metric_out_t  **metrics;
 
     query = ar->query;
     event = ar->cur;
 
-    ngx_memcpy(event->dims, ar->default_event->dims,
-        ar->event_size - sizeof(*ar->default_event));
+    ngx_memcpy(event->data, ar->default_event, query->event_size);
 
     ngx_aggr_event_json_skip_spaces(ctx);
 
@@ -568,8 +575,8 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
             }
 
             for (i = 0; i < outputs->nelts; i++) {
-                idx = dims[i]->index;
-                event->dims[idx] = dim_value;
+                dst_str = (ngx_str_t **) (event->data + dims[i]->offset);
+                *dst_str = dim_value;
             }
 
             goto next;
@@ -592,8 +599,8 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
 
             metrics = outputs->elts;
             for (i = 0; i < outputs->nelts; i++) {
-                idx = metrics[i]->index;
-                event->metrics[idx] = metric_value;
+                dst_dbl = (double *) (event->data + metrics[i]->offset);
+                *dst_dbl = metric_value;
             }
 
             goto next;
@@ -634,8 +641,8 @@ done:
     }
 
     event->node.key = 0;
-    for (i = 0; i < ar->group_dims; i++) {
-        event->node.key ^= (ngx_uint_t) event->dims[i];
+    for (off = 0; off < ar->group_size; off += sizeof(ngx_uint_t)) {
+        event->node.key ^= *(ngx_uint_t *) (event->data + off);
     }
 
     return NGX_OK;
@@ -646,35 +653,40 @@ static void
 ngx_aggr_event_update_metrics(ngx_aggr_event_t *dst, ngx_aggr_event_t *src,
     ngx_aggr_result_t *ar)
 {
-    ngx_uint_t                i;
-    ngx_flag_t                update_selects;
-    ngx_aggr_query_metric_t  *metrics;
+    double                      *src_val, *dst_val;
+    ngx_uint_t                   i;
+    ngx_flag_t                   update_selects;
+    ngx_aggr_query_metric_in_t  *metrics;
 
     update_selects = 1;
 
-    metrics = ar->query->metrics.elts;
-    for (i = 0; i < ar->event_metrics; i++) {
+    metrics = ar->query->metrics_in.elts;
+    for (i = 0; i < ar->query->metrics_in.nelts; i++) {
+
+        src_val = (double *) (src->data + metrics[i].offset);
+        dst_val = (double *) (dst->data + metrics[i].offset);
+
         switch (metrics[i].type) {
 
         case ngx_aggr_query_metric_sum:
-            dst->metrics[i] += src->metrics[i];
+            *dst_val += *src_val;
             break;
 
         case ngx_aggr_query_metric_max:
-            if (src->metrics[i] <= dst->metrics[i]) {
+            if (*src_val <= *dst_val) {
                 update_selects = 0;
                 break;
             }
 
-            dst->metrics[i] = src->metrics[i];
+            *dst_val = *src_val;
 
             if (!update_selects) {
                 break;
             }
 
             /* update select dims to reflect the highest metric value */
-            ngx_memcpy(dst->dims + ar->group_dims, src->dims + ar->group_dims,
-                sizeof(dst->dims[0]) * ar->select_dims);
+            ngx_memcpy(dst->data + ar->group_size, src->data + ar->group_size,
+                ar->select_size);
             update_selects = 0;
             break;
         }
@@ -725,16 +737,25 @@ ngx_aggr_event_json_parse_error(ngx_aggr_event_json_ctx_t *ctx, ngx_log_t *log,
 static size_t
 ngx_aggr_event_dim_size(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
 {
-    size_t      size;
-    ngx_uint_t  i;
+    size_t                     size;
+    ngx_str_t                 *str_val;
+    ngx_uint_t                 i, n;
+    ngx_aggr_query_t          *query;
+    ngx_aggr_query_dim_out_t  *dims;
+
+    query = ar->query;
+
+    dims = query->dims_out.elts;
+    n = query->dims_out.nelts;
 
     size = 0;
-    for (i = 0; i < ar->event_dims; i++) {
-        if (event->dims[i] == NULL) {
+    for (i = 0; i < n; i++) {
+        str_val = *(ngx_str_t **) (event->data + dims[i].offset);
+        if (str_val == NULL) {
             continue;
         }
 
-        size += event->dims[i]->len;
+        size += str_val->len;
     }
 
     return size;
@@ -752,11 +773,13 @@ static u_char *
 ngx_aggr_event_json_write(u_char *p, ngx_aggr_result_t *ar,
     ngx_aggr_event_t *event)
 {
-    ngx_str_t                *str;
-    ngx_uint_t                i;
-    ngx_aggr_query_t         *query;
-    ngx_aggr_query_dim_t     *dims;
-    ngx_aggr_query_metric_t  *metrics;
+    double                        dbl_val;
+    ngx_str_t                    *key;
+    ngx_str_t                    *str_val;
+    ngx_uint_t                    i, n;
+    ngx_aggr_query_t             *query;
+    ngx_aggr_query_dim_out_t     *dims;
+    ngx_aggr_query_metric_out_t  *metrics;
 
     query = ar->query;
 
@@ -773,36 +796,42 @@ ngx_aggr_event_json_write(u_char *p, ngx_aggr_result_t *ar,
         *p++ = ',';
     }
 
-    dims = query->dims.elts;
-    for (i = 0; i < query->dims.nelts; i++) {
-        if (!event->dims[i]) {
+    dims = query->dims_out.elts;
+    n = query->dims_out.nelts;
+
+    for (i = 0; i < n; i++) {
+        str_val = *(ngx_str_t **) (event->data + dims[i].offset);
+        if (str_val == NULL) {
             continue;
         }
 
         *p++ = '"';
-        str = &dims[i].output;
-        p = ngx_copy(p, str->data, str->len);
+        key = &dims[i].name;
+        p = ngx_copy(p, key->data, key->len);
         *p++ = '"';
         *p++ = ':';
 
         *p++ = '"';
-        str = event->dims[i];
-        p = ngx_copy(p, str->data, str->len);
+        p = ngx_copy(p, str_val->data, str_val->len);
         *p++ = '"';
         *p++ = ',';
     }
 
-    metrics = query->metrics.elts;
-    for (i = 0; i < query->metrics.nelts; i++) {
+    metrics = query->metrics_out.elts;
+    n = query->metrics_out.nelts;
+
+    for (i = 0; i < n; i++) {
         *p++ = '"';
-        str = &metrics[i].output;
-        p = ngx_copy(p, str->data, str->len);
+        key = &metrics[i].name;
+        p = ngx_copy(p, key->data, key->len);
         *p++ = '"';
         *p++ = ':';
 
+        dbl_val = *(double *) (event->data + metrics[i].offset);
+
         /* not using ngx_sprintf since it supports only fixed precision */
         p += snprintf((char *) p, NGX_AGGR_QUERY_DOUBLE_LEN,
-            "%.*g", NGX_AGGR_QUERY_DOUBLE_PRECISION, event->metrics[i]);
+            "%.*g", NGX_AGGR_QUERY_DOUBLE_PRECISION, dbl_val);
         *p++ = ',';
     }
 
@@ -832,45 +861,47 @@ static size_t
 ngx_aggr_event_prom_write_size(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
 {
     return ar->query->write_size[ngx_aggr_query_fmt_prom] +
-        ngx_aggr_event_dim_size(ar, event) * ar->event_metrics;
+        ngx_aggr_event_dim_size(ar, event) * ar->query->metrics_out.nelts;
 }
 
 static u_char *
 ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
     ngx_aggr_event_t *event)
 {
-    u_char                   *start;
-    ngx_str_t                *str;
-    ngx_uint_t                i, j;
-    ngx_aggr_query_t         *query;
-    ngx_aggr_query_dim_t     *dims;
-    ngx_aggr_query_metric_t  *metrics;
+    u_char                       *start;
+    double                        dbl_val;
+    ngx_str_t                    *key;
+    ngx_str_t                    *str_val;
+    ngx_uint_t                    i, j;
+    ngx_aggr_query_t             *query;
+    ngx_aggr_query_dim_out_t     *dims;
+    ngx_aggr_query_metric_out_t  *metrics;
 
     query = ar->query;
-    dims = query->dims.elts;
-    metrics = query->metrics.elts;
+    dims = query->dims_out.elts;
+    metrics = query->metrics_out.elts;
 
-    for (i = 0; i < ar->event_metrics; i++) {
+    for (i = 0; i < query->metrics_out.nelts; i++) {
 
-        str = &metrics[i].output;
-        p = ngx_copy(p, str->data, str->len);
+        key = &metrics[i].name;
+        p = ngx_copy(p, key->data, key->len);
 
-        if (ar->event_dims > 0) {
+        if (query->dims_out.nelts > 0) {
             *p++ = '{';
             start = p;
 
-            for (j = 0; j < ar->event_dims; j++) {
-                if (!event->dims[j]) {
+            for (j = 0; j < query->dims_out.nelts; j++) {
+                str_val = *(ngx_str_t **) (event->data + dims[j].offset);
+                if (str_val == NULL) {
                     continue;
                 }
 
-                str = &dims[j].output;
-                p = ngx_copy(p, str->data, str->len);
+                key = &dims[j].name;
+                p = ngx_copy(p, key->data, key->len);
                 *p++ = '=';
 
                 *p++ = '"';
-                str = event->dims[j];
-                p = ngx_copy(p, str->data, str->len);
+                p = ngx_copy(p, str_val->data, str_val->len);
                 *p++ = '"';
                 *p++ = ',';
             }
@@ -885,9 +916,11 @@ ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
 
         *p++ = ' ';
 
+        dbl_val = *(double *) (event->data + metrics[i].offset);
+
         /* not using ngx_sprintf since it supports only fixed precision */
         p += snprintf((char *) p, NGX_AGGR_QUERY_DOUBLE_LEN,
-            "%.*g", NGX_AGGR_QUERY_DOUBLE_PRECISION, event->metrics[i]);
+            "%.*g", NGX_AGGR_QUERY_DOUBLE_PRECISION, dbl_val);
         *p++ = '\n';
     }
 
@@ -898,43 +931,39 @@ ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
 static ngx_int_t
 ngx_aggr_result_init_default(ngx_aggr_result_t *ar)
 {
-    ngx_uint_t                i;
-    ngx_uint_t                hash;
-    ngx_aggr_event_t         *event;
-    ngx_aggr_query_t         *query;
-    ngx_aggr_query_dim_t     *dim;
-    ngx_aggr_query_dim_t     *dims;
-    ngx_aggr_query_metric_t  *metrics;
+    size_t             off;
+    size_t             size;
+    ngx_str_t         *str, **pstr;
+    ngx_uint_t         hash;
+    ngx_aggr_query_t  *query;
 
-    if (ngx_aggr_event_alloc(ar) != NGX_OK) {
+    query = ar->query;
+
+    ar->default_event = ngx_palloc(ar->pool, query->event_size);
+    if (ar->default_event == NULL) {
         return NGX_ERROR;
     }
 
-    event = ar->cur;
-    query = ar->query;
+    ngx_memcpy(ar->default_event, query->default_event, query->event_size);
 
-    dims = query->dims.elts;
-    for (i = 0; i < ar->event_dims; i++) {
-        dim = &dims[i];
-        if (dim->default_value.data == NULL) {
-            event->dims[i] = NULL;
+    size = ar->group_size + ar->select_size;
+
+    for (off = 0; off < size; off += sizeof(str)) {
+        pstr = (ngx_str_t **) (ar->default_event + off);
+
+        str = *pstr;
+        if (str == NULL) {
             continue;
         }
 
-        hash = ngx_hash_key(dim->default_value.data, dim->default_value.len);
-        event->dims[i] = ngx_str_table_get(ar->str_tbl, &dim->default_value,
-            hash);
-        if (event->dims[i] == NULL) {
+        hash = ngx_hash_key(str->data, str->len);
+        str = ngx_str_table_get(ar->str_tbl, str, hash);
+        if (str == NULL) {
             return NGX_ERROR;
         }
-    }
 
-    metrics = query->metrics.elts;
-    for (i = 0; i < ar->event_metrics; i++) {
-        event->metrics[i] = metrics[i].default_value;
+        *pstr = str;
     }
-
-    ar->default_event = event;
 
     return NGX_OK;
 }
@@ -971,13 +1000,9 @@ ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
     ar->pool = pool;
 
     ar->query = query;
-    ar->group_dims = query->dim_count[ngx_aggr_query_dim_group];
-    ar->select_dims = query->dim_count[ngx_aggr_query_dim_select];
-    ar->event_dims = ar->group_dims + ar->select_dims;
-    ar->event_metrics = query->metrics.nelts;
-    ar->event_size = sizeof(*ar->cur) +
-        sizeof(ar->cur->dims[0]) * ar->event_dims +
-        sizeof(ar->cur->metrics[0]) * ar->event_metrics;
+    ar->group_size = query->size[ngx_aggr_query_dim_group];
+    ar->select_size = query->size[ngx_aggr_query_dim_select];
+    ar->event_size = offsetof(ngx_aggr_event_t, data) + query->event_size;
 
     if (ngx_aggr_result_init_default(ar) != NGX_OK) {
         goto failed;
