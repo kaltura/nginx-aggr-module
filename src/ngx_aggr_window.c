@@ -79,7 +79,7 @@ ngx_aggr_bucket_create(ngx_aggr_window_t *window, time_t now)
             break;
         }
 
-        if (bucket->time + window->conf.interval > now) {
+        if (bucket->time + window->conf.interval >= now) {
             break;
         }
 
