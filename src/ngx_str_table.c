@@ -67,11 +67,11 @@ ngx_str_rbtree_lookup_key(ngx_rbtree_t *rbtree, ngx_str_t *val,
 
 
 ngx_str_t *
-ngx_str_table_get(ngx_str_table_t *tbl, ngx_str_t *val, ngx_uint_t hash)
+ngx_str_table_get(ngx_str_table_t *tbl, ngx_str_hash_t *sh)
 {
     ngx_str_node_t  *sn;
 
-    sn = ngx_str_rbtree_lookup_key(&tbl->rbtree, val, hash);
+    sn = ngx_str_rbtree_lookup_key(&tbl->rbtree, &sh->s, sh->hash);
     if (sn != NULL) {
         return &sn->str;
     }
@@ -81,13 +81,13 @@ ngx_str_table_get(ngx_str_table_t *tbl, ngx_str_t *val, ngx_uint_t hash)
         return NULL;
     }
 
-    sn->str.data = ngx_pstrdup(tbl->pool, val);
+    sn->str.data = ngx_pstrdup(tbl->pool, &sh->s);
     if (sn->str.data == NULL) {
         return NULL;
     }
 
-    sn->str.len = val->len;
-    sn->node.key = hash;
+    sn->str.len = sh->s.len;
+    sn->node.key = sh->hash;
 
     ngx_rbtree_insert(&tbl->rbtree, &sn->node);
 

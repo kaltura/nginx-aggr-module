@@ -381,14 +381,13 @@ ngx_aggr_event_json_skip_value(ngx_aggr_event_json_ctx_t *ctx)
 
 
 static ngx_int_t
-ngx_aggr_event_json_str(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
-    ngx_uint_t *hash)
+ngx_aggr_event_json_str(ngx_aggr_event_json_ctx_t *ctx, ngx_str_hash_t *sh)
 {
     u_char  c;
 
-    *hash = 0;
+    sh->hash = 0;
 
-    val->data = ctx->p;
+    sh->s.data = ctx->p;
 
     for ( ;; ) {
 
@@ -397,7 +396,7 @@ ngx_aggr_event_json_str(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
         switch (c) {
 
         case '\\':
-            *hash = ngx_hash(*hash, c);
+            sh->hash = ngx_hash(sh->hash, c);
 
             ctx->p++;       /* skip the \ */
             c = *ctx->p;
@@ -412,12 +411,12 @@ ngx_aggr_event_json_str(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
             return NGX_ERROR;
 
         case '"':
-            val->len = ctx->p - val->data;
+            sh->s.len = ctx->p - sh->s.data;
             ctx->p++;       /* skip the " */
             return NGX_OK;
         }
 
-        *hash = ngx_hash(*hash, c);
+        sh->hash = ngx_hash(sh->hash, c);
 
         ctx->p++;
     }
@@ -425,14 +424,13 @@ ngx_aggr_event_json_str(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
 
 
 static ngx_int_t
-ngx_aggr_event_json_str_lc(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
-    ngx_uint_t *hash)
+ngx_aggr_event_json_str_lc(ngx_aggr_event_json_ctx_t *ctx, ngx_str_hash_t *sh)
 {
     u_char  c;
 
-    *hash = 0;
+    sh->hash = 0;
 
-    val->data = ctx->p;
+    sh->s.data = ctx->p;
 
     for ( ;; ) {
 
@@ -441,7 +439,7 @@ ngx_aggr_event_json_str_lc(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
         switch (c) {
 
         case '\\':
-            *hash = ngx_hash(*hash, c);
+            sh->hash = ngx_hash(sh->hash, c);
 
             ctx->p++;       /* skip the \ */
             c = *ctx->p;
@@ -456,7 +454,7 @@ ngx_aggr_event_json_str_lc(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
             return NGX_ERROR;
 
         case '"':
-            val->len = ctx->p - val->data;
+            sh->s.len = ctx->p - sh->s.data;
             ctx->p++;       /* skip the " */
             return NGX_OK;
 
@@ -468,7 +466,7 @@ ngx_aggr_event_json_str_lc(ngx_aggr_event_json_ctx_t *ctx, ngx_str_t *val,
             break;
         }
 
-        *hash = ngx_hash(*hash, c);
+        sh->hash = ngx_hash(sh->hash, c);
 
         ctx->p++;
     }
@@ -497,12 +495,11 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
     size_t                         off;
     double                        *dst_dbl;
     double                         metric_value;
-    ngx_str_t                      str;
     ngx_str_t                    **dst_str;
     ngx_str_t                     *dim_value;
     ngx_uint_t                     i;
-    ngx_uint_t                     hash;
     ngx_array_t                   *outputs;
+    ngx_str_hash_t                 sh;
     ngx_aggr_event_t              *event;
     ngx_aggr_query_t              *query;
     ngx_aggr_query_dim_in_t      **dims;
@@ -528,7 +525,7 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
 
         ngx_aggr_event_json_expect_char(ctx, '"');
 
-        if (ngx_aggr_event_json_str(ctx, &str, &hash) != NGX_OK) {
+        if (ngx_aggr_event_json_str(ctx, &sh) != NGX_OK) {
             return NGX_ERROR;
         }
 
@@ -542,8 +539,8 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
 
             ctx->p++;       /* skip the " */
 
-            outputs = ngx_hash_find(&query->dims_hash, hash,
-                str.data, str.len);
+            outputs = ngx_hash_find(&query->dims_hash, sh.hash,
+                sh.s.data, sh.s.len);
             if (outputs == NULL) {
                 if (ngx_aggr_event_json_skip_str(ctx) != NGX_OK) {
                     return NGX_ERROR;
@@ -557,19 +554,19 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
             /* TODO: support mix of lower = 1 & lower = 0 for a single dim */
 
             if (dims[0]->lower) {
-                if (ngx_aggr_event_json_str_lc(ctx, &str, &hash) != NGX_OK) {
+                if (ngx_aggr_event_json_str_lc(ctx, &sh) != NGX_OK) {
                     return NGX_ERROR;
                 }
 
             } else {
-                if (ngx_aggr_event_json_str(ctx, &str, &hash) != NGX_OK) {
+                if (ngx_aggr_event_json_str(ctx, &sh) != NGX_OK) {
                     return NGX_ERROR;
                 }
             }
 
             /* TODO: postpone the str table get for 'select' dims */
 
-            dim_value = ngx_str_table_get(ar->str_tbl, &str, hash);
+            dim_value = ngx_str_table_get(ar->str_tbl, &sh);
             if (dim_value == NULL) {
                 return NGX_ERROR;
             }
@@ -583,8 +580,8 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
 
         } else if (isdigit(*ctx->p) || *ctx->p == '-') {
 
-            outputs = ngx_hash_find(&query->metrics_hash, hash,
-                str.data, str.len);
+            outputs = ngx_hash_find(&query->metrics_hash, sh.hash,
+                sh.s.data, sh.s.len);
             if (outputs == NULL) {
                 if (ngx_aggr_event_json_skip_num(ctx) != NGX_OK) {
                     return NGX_ERROR;
@@ -934,7 +931,7 @@ ngx_aggr_result_init_default(ngx_aggr_result_t *ar)
     size_t             off;
     size_t             size;
     ngx_str_t         *str, **pstr;
-    ngx_uint_t         hash;
+    ngx_str_hash_t     sh;
     ngx_aggr_query_t  *query;
 
     query = ar->query;
@@ -956,8 +953,10 @@ ngx_aggr_result_init_default(ngx_aggr_result_t *ar)
             continue;
         }
 
-        hash = ngx_hash_key(str->data, str->len);
-        str = ngx_str_table_get(ar->str_tbl, str, hash);
+        sh.hash = ngx_hash_key(str->data, str->len);
+        sh.s = *str;
+
+        str = ngx_str_table_get(ar->str_tbl, &sh);
         if (str == NULL) {
             return NGX_ERROR;
         }
