@@ -442,7 +442,8 @@ ngx_http_aggr_static_handler(ngx_http_request_t *r)
 static void
 ngx_http_aggr_body_handler(ngx_http_request_t *r)
 {
-    ngx_buf_t                 *b;
+    size_t                     size;
+    ngx_buf_t                 *b, *nb;
     ngx_int_t                  rc;
     ngx_pool_t                *temp_pool;
     ngx_json_value_t           json;
@@ -469,10 +470,19 @@ ngx_http_aggr_body_handler(ngx_http_request_t *r)
 
     b = r->request_body->bufs->buf;
     if (b->last >= b->end) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
             "ngx_http_aggr_body_handler: no room for null terminator");
-        rc = NGX_HTTP_REQUEST_ENTITY_TOO_LARGE;
-        goto done;
+
+        size = b->last - b->pos;
+        nb = ngx_create_temp_buf(r->connection->pool, size + 1);
+        if (nb == NULL) {
+            rc = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            goto done;
+        }
+
+        nb->last = ngx_copy(nb->last, b->pos, size);
+
+        b = nb;
     }
 
     *b->last = '\0';
