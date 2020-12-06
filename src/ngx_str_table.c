@@ -35,7 +35,7 @@ ngx_str_rbtree_lookup_key(ngx_rbtree_t *rbtree, ngx_str_t *val,
 
     while (node != sentinel) {
 
-        n = (ngx_str_node_t *)node;
+        n = (ngx_str_node_t *) node;
 
         if (hash != node->key) {
             node = (hash < node->key) ? node->left : node->right;
