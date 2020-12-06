@@ -179,11 +179,6 @@ ngx_json_parse_object_key(ngx_json_parser_state_t *state,
             break;
         }
 
-        if (c >= 'A' && c <= 'Z') {
-            c |= 0x20;          /* tolower */
-            *state->cur_pos = c;
-        }
-
         switch (c) {
 
         case '\\':
@@ -341,7 +336,7 @@ ngx_json_parse_array(ngx_json_parser_state_t *state, ngx_json_array_t *result)
         return NGX_JSON_ALLOC_FAILED;
     }
     part->first = cur_item;
-    part->last = (u_char*) cur_item + part_size;
+    part->last = (u_char *) cur_item + part_size;
 
     for ( ;; ) {
         if (result->count >= NGX_JSON_MAX_ELEMENTS) {
@@ -368,7 +363,7 @@ ngx_json_parse_array(ngx_json_parser_state_t *state, ngx_json_array_t *result)
             part = part->next;
             cur_item = part + 1;
             part->first = cur_item;
-            part->last = (u_char*) cur_item + part_size;
+            part->last = (u_char *) cur_item + part_size;
         }
 
         rc = type->parser(state, cur_item);
@@ -376,7 +371,7 @@ ngx_json_parse_array(ngx_json_parser_state_t *state, ngx_json_array_t *result)
             return rc;
         }
 
-        cur_item = (u_char*)cur_item + type->size;
+        cur_item = (u_char *) cur_item + type->size;
         result->count++;
 
         ngx_json_skip_spaces(state);
@@ -448,7 +443,7 @@ ngx_json_parse_object(ngx_json_parser_state_t *state,
             return NGX_JSON_BAD_DATA;
         }
 
-        cur_item = (ngx_json_key_value_t*)ngx_array_push(result);
+        cur_item = (ngx_json_key_value_t *) ngx_array_push(result);
         if (cur_item == NULL) {
             return NGX_JSON_ALLOC_FAILED;
         }
@@ -492,21 +487,21 @@ static ngx_json_status_t
 ngx_json_parser_string(ngx_json_parser_state_t *state, void *result)
 {
     ASSERT_CHAR(state, '"');
-    return ngx_json_parse_string(state, (ngx_str_t*)result);
+    return ngx_json_parse_string(state, (ngx_str_t *) result);
 }
 
 static ngx_json_status_t
 ngx_json_parser_array(ngx_json_parser_state_t *state, void *result)
 {
     ASSERT_CHAR(state, '[');
-    return ngx_json_parse_array(state, (ngx_json_array_t*)result);
+    return ngx_json_parse_array(state, (ngx_json_array_t *) result);
 }
 
 static ngx_json_status_t
 ngx_json_parser_object(ngx_json_parser_state_t *state, void *result)
 {
     ASSERT_CHAR(state, '{');
-    return ngx_json_parse_object(state, (ngx_json_object_t*)result);
+    return ngx_json_parse_object(state, (ngx_json_object_t *) result);
 }
 
 static ngx_json_status_t
@@ -516,12 +511,12 @@ ngx_json_parser_bool(ngx_json_parser_state_t *state, void *result)
 
     case 't':
         EXPECT_STRING(state, "true");
-        *(ngx_flag_t*)result = 1;
+        *(ngx_flag_t *) result = 1;
         return NGX_JSON_OK;
 
     case 'f':
         EXPECT_STRING(state, "false");
-        *(ngx_flag_t*)result = 0;
+        *(ngx_flag_t *) result = 0;
         return NGX_JSON_OK;
     }
 
@@ -532,7 +527,7 @@ ngx_json_parser_bool(ngx_json_parser_state_t *state, void *result)
 static ngx_json_status_t
 ngx_json_parser_number(ngx_json_parser_state_t *state, void *result)
 {
-    return ngx_json_parse_number(state, (double*)result);
+    return ngx_json_parse_number(state, (double *) result);
 }
 
 static ngx_json_status_t
@@ -628,7 +623,7 @@ ngx_json_unicode_hex_to_utf8(u_char *dest, u_char *src)
     }
 
     if (ch < 0x80) {
-        *dest++ = (u_char)ch;
+        *dest++ = (u_char) ch;
 
     } else if (ch < 0x800) {
         *dest++ = (ch >> 6) | 0xC0;
