@@ -9,7 +9,7 @@
 
 
 typedef struct {
-    ngx_array_t             producers;      /* ngx_kafka_producer_t * */
+    ngx_array_t                  producers;      /* ngx_kafka_producer_t * */
 } ngx_kafka_producer_conf_t;
 
 
@@ -707,6 +707,11 @@ ngx_kafka_producer_topic_slot(ngx_conf_t *cf, ngx_command_t *cmd, void *conf,
 void
 ngx_kafka_producer_topic_poll(ngx_kafka_producer_topic_t *kpt)
 {
+    if (kpt->kp->rk == NULL) {
+        /* can happen due to a race condition on startup */
+        return;
+    }
+
     (void) rd_kafka_poll(kpt->kp->rk, 0);
 }
 
@@ -717,6 +722,12 @@ ngx_kafka_producer_topic_produce(ngx_kafka_producer_topic_t *kpt,
 {
     int          err;
     const char  *errstr;
+
+    if (kpt->rkt == NULL) {
+        /* can happen due to a race condition on startup */
+        kpt->free(free_ctx);
+        return;
+    }
 
     err = rd_kafka_produce(kpt->rkt, kpt->partition, 0, buf, len, NULL, 0,
         free_ctx);
@@ -735,8 +746,6 @@ ngx_kafka_producer_topic_produce(ngx_kafka_producer_topic_t *kpt,
     ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0,
         "produce failed, topic:%V, partition:%i, err:%s",
         &kpt->name, kpt->partition, errstr);
-
-    return;
 }
 
 

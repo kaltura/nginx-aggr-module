@@ -1,4 +1,4 @@
-# Nginx Aggregation module
+# Nginx Aggregation Module
 
 Aggregates JSON events received over UDP/TCP.
 The aggregated events can be pushed to a Kafka topic or pulled over HTTP.
