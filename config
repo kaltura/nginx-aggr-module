@@ -56,8 +56,8 @@ ngx_feature_test="rd_kafka_new(RD_KAFKA_PRODUCER, NULL, NULL, 0);"
 
 if [ $ngx_found = yes ]; then
     ngx_module_libs="$ngx_module_libs $ngx_feature_libs"
-    AGGR_CORE_DEPS="$AGGR_CORE_DEPS $ngx_addon_dir/src/ngx_kafka_producer.c"
-    AGGR_CORE_SRCS="$AGGR_CORE_SRCS $ngx_addon_dir/src/ngx_kafka_producer.h"
+    AGGR_CORE_DEPS="$AGGR_CORE_DEPS $ngx_addon_dir/src/ngx_kafka_producer.h"
+    AGGR_CORE_SRCS="$AGGR_CORE_SRCS $ngx_addon_dir/src/ngx_kafka_producer.c"
     AGGR_CORE_MODS="$AGGR_CORE_MODS ngx_kafka_producer_module"
 fi
 
