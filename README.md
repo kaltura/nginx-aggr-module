@@ -407,6 +407,16 @@ Sets the size of the buffers allocated for holding the result set.
             "type": "max",
             "input": "time"
         }
+    },
+    "filter": {
+        "type": "in",
+        "dim": "domain",
+        "values": ["example.com"]
+    },
+    "having": {
+        "type": "gt",
+        "metric": "count",
+        "value": 100
     }
 }
 ```
@@ -437,6 +447,99 @@ The following optional properties can be specified:
 * `type` - string, sets the type of the metric - `sum`/`max`, the default is `max`.
 * `input` - string, sets the name of the key in the input JSON, the default is `output_name`.
 * `default` - number, sets a default value for the metric, the default will be used if the metric does not appear in the input JSON.
+* `top` - number, include in the output only the events that have the top N values of the metric. If the provided number is negative, the output will include only the events that have the bottom N values of the metric. This property can be applied to one metric at the most.
+
+#### filter
+* **syntax**: `"filter": { ... }`
+* **default**: `-`
+* **context**: `query`
+
+A filter object, see [Filter objects](#filter-objects) below for more details. The filter is applied to all input events during aggregation, events that don't match the filter are ignored.
+
+#### having
+* **syntax**: `"having": { ... }`
+* **default**: `-`
+* **context**: `query`
+
+A filter object, see [Filter objects](#filter-objects) below for more details. The filter is applied to all output events post aggregation, events that don't match the filter are not included in the output.
+
+### Filter objects
+
+#### In filter
+
+Checks whether the value of an input dimension is in the provided string array.
+
+The following properties are required:
+* `type` - string, must be `"in"`.
+* `dim` - string, the name of the dimension key in the event JSON.
+* `values` - string array, the list of values to compare against.
+
+The following optional properties are defined:
+* `case_sensitive` - boolean, if set to false, the string comparison will ignore case (default is `true`).
+
+#### Contains filter
+
+Checks whether any of the provided strings is contained in the value of an input dimension.
+
+The following properties are required:
+* `type` - string, must be `"contains"`.
+* `dim` - string, the name of the dimension key in the event JSON.
+* `values` - string array, the list of substrings to search for.
+
+The following optional properties are defined:
+* `case_sensitive` - boolean, if set to false, the string comparison will ignore case (default is `true`).
+
+#### Regex filter
+
+Checks whether the value of an input dimension matches a provided regular expression pattern.
+
+The following properties are required:
+* `type` - string, must be `"regex"`.
+* `dim` - string, the name of the dimension key in the event JSON.
+* `pattern` - string, a PCRE regular expression pattern.
+
+The following optional properties are defined:
+* `case_sensitive` - boolean, if set to false, the comparison will ignore case (default is `true`).
+
+#### Compare filter
+
+Checks whether the value of a metric is greater/less than the provided reference value.
+The filter can be applied during aggregation to input metrics (when included in the query `filter` object), or post aggregation to output metrics (when included in the query `having` object).
+
+The following properties are required:
+* `type` - string, one of the following:
+    * `"gt"` - greater than
+    * `"lt"` - less than
+    * `"gte"` - greater than or equals
+    * `"lte"` - less than or equals
+* `metric` - string, the name of the metric key. When used in `filter` context, name is the input name of a metric in the event JSON. When used in `having` context, name is the output name of some aggregation metric.
+
+The following optional properties are defined:
+* `value` - number, the value to compare against (default is `0`)
+
+#### And filter
+
+Applies a logical AND to the results of multiple filters.
+
+The following properties are required:
+* `type` - string, must be `"and"`.
+* `filters` - object array, the filter objects.
+
+#### Or filter
+
+Applies a logical OR to the results of multiple filters.
+
+The following properties are required:
+* `type` - string, must be `"or"`.
+* `filters` - object array, the filter objects.
+
+#### Not filter
+
+Applies a logical NOT to the result of another filter.
+
+The following properties are required:
+* `type` - string, must be `"not"`.
+* `filter` - object, a filter object.
 
 
 ## Copyright & License

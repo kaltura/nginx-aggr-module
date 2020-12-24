@@ -48,15 +48,22 @@ struct ngx_aggr_result_s {
     size_t                    group_size;
     size_t                    select_size;
     size_t                    event_size;
+    size_t                    metrics_offset;
 
     ngx_rbtree_t              rbtree;
     ngx_rbtree_node_t         sentinel;
     ngx_aggr_event_t         *head;
     ngx_aggr_event_t         *cur;
-    u_char                   *default_event;
+    ngx_uint_t                count;
+    u_char                   *temp_data;
 
     u_char                    time_buf[NGX_ISO8601_TIMESTAMP_LEN];
     size_t                    time_len;
+};
+
+
+struct ngx_aggr_filter_ctx_s {
+    ngx_aggr_result_t  *ar;
 };
 
 
@@ -210,6 +217,224 @@ ngx_aggr_event_rbtree_lookup(ngx_rbtree_t *rbtree, ngx_aggr_event_t *event)
     return NULL;
 }
 
+
+static ngx_flag_t
+ngx_aggr_filter_strstr(ngx_str_t *haystack, ngx_str_t *needle)
+{
+    size_t   n;
+    u_char   c1, c2;
+    u_char  *s1, *s1_end;
+    u_char  *s2;
+
+    if (needle->len <= 0) {
+        return 1;
+    }
+
+    if (needle->len > haystack->len) {
+        return 0;
+    }
+
+    s1 = haystack->data;
+    s1_end = s1 + haystack->len - needle->len;
+
+    s2 = needle->data;
+    n = needle->len - 1;
+
+    c2 = *s2++;
+
+    do {
+        do {
+            if (s1 > s1_end) {
+                return 0;
+            }
+
+            c1 = *s1++;
+
+        } while (c1 != c2);
+
+    } while (ngx_memcmp(s1, s2, n) != 0);
+
+    return 1;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_in(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    ngx_uint_t                      i;
+    ngx_str_hash_t                 *sh;
+    ngx_aggr_query_filter_match_t  *filter;
+
+    filter = data;
+    sh = (ngx_str_hash_t *) (ctx->ar->temp_data + filter->temp_offset);
+
+    for (i = 0; i < filter->values_len; i++) {
+        if (filter->values[i].hash == sh->hash &&
+            filter->values[i].s.len == sh->s.len &&
+            ngx_memcmp(filter->values[i].s.data, sh->s.data, sh->s.len) == 0)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_contains(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    ngx_uint_t                      i;
+    ngx_str_hash_t                 *sh;
+    ngx_aggr_query_filter_match_t  *filter;
+
+    filter = data;
+    sh = (ngx_str_hash_t *) (ctx->ar->temp_data + filter->temp_offset);
+
+    for (i = 0; i < filter->values_len; i++) {
+        if (ngx_aggr_filter_strstr(&sh->s, &filter->values[i].s)) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+#if (NGX_PCRE)
+ngx_flag_t
+ngx_aggr_filter_regex(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    int                             rc;
+    ngx_str_t                       s;
+    ngx_str_hash_t                 *sh;
+    ngx_aggr_query_filter_regex_t  *filter;
+
+    filter = data;
+    sh = (ngx_str_hash_t *) (ctx->ar->temp_data + filter->temp_offset);
+
+    s = sh->s;
+    if (s.data == NULL) {
+        s.data = (u_char *) "";        /* pcre_exec fails on null */
+    }
+
+    rc = ngx_regex_exec(filter->re, &s, NULL, 0);
+
+    if (rc == NGX_REGEX_NO_MATCHED) {
+        return 0;
+    }
+
+    if (rc >= 0) {
+        return 1;
+    }
+
+    ngx_log_error(NGX_LOG_ALERT, ctx->ar->pool->log, 0,
+        ngx_regex_exec_n " failed: %i on \"%V\"", rc, &s);
+
+    return 0;
+}
+#endif
+
+
+ngx_flag_t
+ngx_aggr_filter_gt(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    double                            value;
+    ngx_aggr_query_filter_compare_t  *filter;
+
+    filter = data;
+    value = *(double *) (ctx->ar->cur->data + filter->offset);
+
+    return value > filter->value;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_lt(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    double                            value;
+    ngx_aggr_query_filter_compare_t  *filter;
+
+    filter = data;
+    value = *(double *) (ctx->ar->cur->data + filter->offset);
+
+    return value < filter->value;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_gte(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    double                            value;
+    ngx_aggr_query_filter_compare_t  *filter;
+
+    filter = data;
+    value = *(double *) (ctx->ar->cur->data + filter->offset);
+
+    return value >= filter->value;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_lte(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    double                            value;
+    ngx_aggr_query_filter_compare_t  *filter;
+
+    filter = data;
+    value = *(double *) (ctx->ar->cur->data + filter->offset);
+
+    return value <= filter->value;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_and(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    ngx_uint_t                      i, n;
+    ngx_aggr_query_filter_t        *elts;
+    ngx_aggr_query_filter_group_t  *filter = data;
+
+    elts = filter->filters.elts;
+    n = filter->filters.nelts;
+
+    for (i = 0; i < n; i++) {
+        if (!elts[i].handler(ctx, elts[i].data)) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_or(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    ngx_uint_t                      i, n;
+    ngx_aggr_query_filter_t        *elts;
+    ngx_aggr_query_filter_group_t  *filter = data;
+
+    elts = filter->filters.elts;
+    n = filter->filters.nelts;
+
+    for (i = 0; i < n; i++) {
+        if (elts[i].handler(ctx, elts[i].data)) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+ngx_flag_t
+ngx_aggr_filter_not(ngx_aggr_filter_ctx_t *ctx, void *data)
+{
+    ngx_aggr_query_filter_t  *filter = data;
+
+    return !filter->handler(ctx, filter->data);
+}
 
 /* Note: change to 1 to support "pretty" jsons */
 #define NGX_AGGR_EVENT_JSON_SKIP_SPACES  (0)
@@ -492,23 +717,27 @@ static ngx_int_t
 ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
     ngx_aggr_result_t *ar)
 {
-    size_t                         off;
+    size_t                         dst_offset;
+    size_t                         temp_offset;
     double                        *dst_dbl;
     double                         metric_value;
-    ngx_str_t                    **dst_str;
     ngx_str_t                     *dim_value;
     ngx_uint_t                     i;
     ngx_array_t                   *outputs;
     ngx_str_hash_t                 sh;
+    ngx_str_hash_t                *shp;
     ngx_aggr_event_t              *event;
     ngx_aggr_query_t              *query;
+    ngx_aggr_filter_ctx_t          fctx;
     ngx_aggr_query_dim_in_t      **dims;
     ngx_aggr_query_metric_out_t  **metrics;
 
     query = ar->query;
     event = ar->cur;
 
-    ngx_memcpy(event->data, ar->default_event, query->event_size);
+    ngx_memcpy(ar->temp_data, query->temp_default, query->temp_size);
+    ngx_memcpy(event->data + ar->metrics_offset, query->metrics_default,
+        query->metrics_size);
 
     ngx_aggr_event_json_skip_spaces(ctx);
 
@@ -564,16 +793,10 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
                 }
             }
 
-            /* TODO: postpone the str table get for 'select' dims */
-
-            dim_value = ngx_str_table_get(ar->str_tbl, &sh);
-            if (dim_value == NULL) {
-                return NGX_ERROR;
-            }
-
             for (i = 0; i < outputs->nelts; i++) {
-                dst_str = (ngx_str_t **) (event->data + dims[i]->offset);
-                *dst_str = dim_value;
+                shp = (ngx_str_hash_t *) (ar->temp_data +
+                    dims[i]->temp_offset);
+                *shp = sh;
             }
 
             goto next;
@@ -637,16 +860,70 @@ done:
         return NGX_ERROR;
     }
 
+
+    fctx.ar = ar;
+
+    if (query->filter.handler != NULL &&
+        !query->filter.handler(&fctx, query->filter.data))
+    {
+        return NGX_ABORT;
+    }
+
+
+    /* alloc group dims in str table + calc event hash */
+    temp_offset = 0;
     event->node.key = 0;
-    for (off = 0; off < ar->group_size; off += sizeof(ngx_uint_t)) {
-        event->node.key ^= *(ngx_uint_t *) (event->data + off);
+
+    for (dst_offset = 0;
+        dst_offset < ar->group_size;
+        dst_offset += sizeof(ngx_str_t *))
+    {
+        shp = (ngx_str_hash_t *) (ar->temp_data + temp_offset);
+        temp_offset += sizeof(ngx_str_hash_t);
+
+        dim_value = ngx_str_table_get(ar->str_tbl, shp);
+        if (dim_value == NULL) {
+            return NGX_ERROR;
+        }
+
+        *(ngx_str_t **) (event->data + dst_offset) = dim_value;
+
+        event->node.key ^= (ngx_uint_t) dim_value;
     }
 
     return NGX_OK;
 }
 
 
-static void
+static ngx_int_t
+ngx_aggr_event_copy_select_dims(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
+{
+    ngx_str_t       *dim_value;
+    ngx_uint_t       dst_offset;
+    ngx_uint_t       temp_offset;
+    ngx_str_hash_t  *shp;
+
+    dst_offset = ar->group_size;
+    temp_offset = dst_offset / sizeof(ngx_str_t *) * sizeof(ngx_str_hash_t);
+
+    for (; dst_offset < ar->metrics_offset; dst_offset += sizeof(ngx_str_t *))
+    {
+        shp = (ngx_str_hash_t *) (ar->temp_data + temp_offset);
+        temp_offset += sizeof(ngx_str_hash_t);
+
+        dim_value = ngx_str_table_get(ar->str_tbl, shp);
+        if (dim_value == NULL) {
+            return NGX_ERROR;
+        }
+
+        *(ngx_str_t **) (event->data + dst_offset) = dim_value;
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
 ngx_aggr_event_update_metrics(ngx_aggr_event_t *dst, ngx_aggr_event_t *src,
     ngx_aggr_result_t *ar)
 {
@@ -682,12 +959,15 @@ ngx_aggr_event_update_metrics(ngx_aggr_event_t *dst, ngx_aggr_event_t *src,
             }
 
             /* update select dims to reflect the highest metric value */
-            ngx_memcpy(dst->data + ar->group_size, src->data + ar->group_size,
-                ar->select_size);
+            if (ngx_aggr_event_copy_select_dims(ar, dst) != NGX_OK) {
+                return NGX_ERROR;
+            }
             update_selects = 0;
             break;
         }
     }
+
+    return NGX_OK;
 }
 
 
@@ -848,7 +1128,7 @@ ngx_aggr_event_json_write_delim(u_char *p, ngx_aggr_result_t *ar,
     ngx_aggr_event_t *event)
 {
     p = ngx_aggr_event_json_write(p, ar, event);
-    *p++ = '\n';
+    *p++ = ',';
 
     return p;
 }
@@ -925,49 +1205,6 @@ ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
 }
 
 
-static ngx_int_t
-ngx_aggr_result_init_default(ngx_aggr_result_t *ar)
-{
-    size_t             off;
-    size_t             size;
-    ngx_str_t         *str, **pstr;
-    ngx_str_hash_t     sh;
-    ngx_aggr_query_t  *query;
-
-    query = ar->query;
-
-    ar->default_event = ngx_palloc(ar->pool, query->event_size);
-    if (ar->default_event == NULL) {
-        return NGX_ERROR;
-    }
-
-    ngx_memcpy(ar->default_event, query->default_event, query->event_size);
-
-    size = ar->group_size + ar->select_size;
-
-    for (off = 0; off < size; off += sizeof(str)) {
-        pstr = (ngx_str_t **) (ar->default_event + off);
-
-        str = *pstr;
-        if (str == NULL) {
-            continue;
-        }
-
-        sh.hash = ngx_hash_key(str->data, str->len);
-        sh.s = *str;
-
-        str = ngx_str_table_get(ar->str_tbl, &sh);
-        if (str == NULL) {
-            return NGX_ERROR;
-        }
-
-        *pstr = str;
-    }
-
-    return NGX_OK;
-}
-
-
 ngx_aggr_result_t *
 ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
     ngx_aggr_result_t *prev)
@@ -1002,8 +1239,10 @@ ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
     ar->group_size = query->size[ngx_aggr_query_dim_group];
     ar->select_size = query->size[ngx_aggr_query_dim_select];
     ar->event_size = offsetof(ngx_aggr_event_t, data) + query->event_size;
+    ar->metrics_offset = ar->group_size + ar->select_size;
 
-    if (ngx_aggr_result_init_default(ar) != NGX_OK) {
+    ar->temp_data = ngx_palloc(ar->pool, query->temp_size);
+    if (ar->temp_data == NULL) {
         goto failed;
     }
 
@@ -1021,6 +1260,7 @@ ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
     ar->time_len = NGX_ISO8601_TIMESTAMP_LEN;
 
     ar->head = NULL;
+    ar->count = 0;
     ngx_rbtree_init(&ar->rbtree, &ar->sentinel,
         ngx_aggr_event_rbtree_insert_value);
 
@@ -1050,28 +1290,122 @@ ngx_aggr_result_destroy(ngx_aggr_result_t *ar)
 }
 
 
-ngx_chain_t **
-ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
-    ngx_chain_t **last, off_t *size)
+static ngx_aggr_event_t **
+ngx_aggr_result_get_top(ngx_aggr_result_t *ar, ngx_uint_t *cnt)
 {
-    u_char                        *p;
-    size_t                         max_size;
-    size_t                         buf_size;
-    ngx_buf_t                     *b;
-    ngx_buf_t                      empty_buf;
-    ngx_chain_t                   *cl;
-    ngx_aggr_event_t              *event;
-    ngx_aggr_query_t              *query;
-    ngx_aggr_event_write_pt        write;
-    ngx_aggr_event_write_size_pt   get_size;
+    double                   cur;
+    double                   value;
+    ngx_uint_t               insert;
+    ngx_uint_t               count;
+    ngx_uint_t               top_offset;
+    ngx_aggr_event_t       **top;
+    ngx_aggr_query_t        *query;
+    ngx_aggr_event_t        *event;
+    ngx_aggr_filter_ctx_t    fctx;
 
     query = ar->query;
+
+    count = query->top_count + 1;
+    if (ar->count < count) {
+        count = ar->count;
+    }
+
+    top = ngx_palloc(ar->pool, count * sizeof(top[0]));
+    if (top == NULL) {
+        return NULL;
+    }
+
+    top_offset = query->top_offset;
+
+    count = 0;
+
+    for (event = ar->head; event != NULL; event = event->next) {
+
+        if (query->having.handler != NULL) {
+            ar->cur = event;
+            fctx.ar = ar;
+
+            if (!query->having.handler(&fctx, query->having.data)) {
+                continue;
+            }
+        }
+
+        value = *(double *) (event->data + top_offset);
+
+        for (insert = count; insert > 0; insert--) {
+            cur = *(double *) (top[insert - 1]->data + top_offset);
+            if (!query->top_inverted) {
+                if (value <= cur) {
+                    break;
+                }
+
+            } else if (value >= cur) {
+                break;
+            }
+
+            top[insert] = top[insert - 1];
+        }
+
+        top[insert] = event;
+
+        if (count < query->top_count) {
+            count++;
+        }
+    }
+
+    *cnt = count;
+
+    return top;
+}
+
+
+static ngx_chain_t **
+ngx_aggr_result_write_top(ngx_aggr_result_t *ar, ngx_pool_t *pool,
+    ngx_chain_t **last, off_t *size)
+{
+    u_char                         *p;
+    size_t                          max_size;
+    size_t                          buf_size;
+    ngx_buf_t                      *b;
+    ngx_uint_t                      i;
+    ngx_uint_t                      count;
+    ngx_chain_t                    *cl;
+    ngx_aggr_event_t              **top;
+    ngx_aggr_event_t               *event;
+    ngx_aggr_query_t               *query;
+    ngx_aggr_event_write_pt         write;
+    ngx_aggr_event_write_size_pt    get_size;
+
+    top = ngx_aggr_result_get_top(ar, &count);
+    if (top == NULL) {
+        return NULL;
+    }
+
+    query = ar->query;
+    buf_size = query->output_buf_size;
+
+    b = ngx_create_temp_buf(pool, buf_size);
+    if (b == NULL) {
+        return NULL;
+    }
+
+    cl = ngx_alloc_chain_link(pool);
+    if (cl == NULL) {
+        return NULL;
+    }
+
+    cl->buf = b;
+    *last = cl;
+    last = &cl->next;
+
+    p = b->last;
 
     switch (query->fmt) {
 
     case ngx_aggr_query_fmt_json:
         get_size = ngx_aggr_event_json_write_size;
         write = ngx_aggr_event_json_write_delim;
+        *p++ = '[';
         break;
 
     default:    /* ngx_aggr_query_fmt_prom */
@@ -1080,19 +1414,14 @@ ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
         break;
     }
 
-    buf_size = query->output_buf_size;
-
-    ngx_memzero(&empty_buf, sizeof(empty_buf));
-    b = &empty_buf;
-    p = NULL;
-
-    for (event = ar->head; event != NULL; event = event->next) {
+    for (i = 0; i < count; i++) {
+        event = top[i];
 
         max_size = get_size(ar, event);
 
-        if ((size_t) (b->end - b->last) < max_size) {
+        if ((size_t) (b->end - p) <= max_size) {
 
-            if (max_size > buf_size) {
+            if (max_size >= buf_size) {
                 continue;
             }
 
@@ -1117,6 +1446,126 @@ ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
         }
 
         p = write(p, ar, event);
+    }
+
+    if (query->fmt == ngx_aggr_query_fmt_json) {
+        if (p[-1] == ',') {
+            p[-1] = ']';
+
+        } else {
+            *p++ = ']';
+        }
+    }
+
+    b->last = p;
+    *size += p - b->pos;
+
+    return last;
+}
+
+
+ngx_chain_t **
+ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
+    ngx_chain_t **last, off_t *size)
+{
+    u_char                        *p;
+    size_t                         max_size;
+    size_t                         buf_size;
+    ngx_buf_t                     *b;
+    ngx_chain_t                   *cl;
+    ngx_aggr_event_t              *event;
+    ngx_aggr_query_t              *query;
+    ngx_aggr_filter_ctx_t          fctx;
+    ngx_aggr_event_write_pt        write;
+    ngx_aggr_event_write_size_pt   get_size;
+
+    query = ar->query;
+
+    if (query->top_count > 0) {
+        return ngx_aggr_result_write_top(ar, pool, last, size);
+    }
+
+    buf_size = query->output_buf_size;
+
+    b = ngx_create_temp_buf(pool, buf_size);
+    if (b == NULL) {
+        return NULL;
+    }
+
+    cl = ngx_alloc_chain_link(pool);
+    if (cl == NULL) {
+        return NULL;
+    }
+
+    cl->buf = b;
+    *last = cl;
+    last = &cl->next;
+
+    p = b->last;
+
+    switch (query->fmt) {
+
+    case ngx_aggr_query_fmt_json:
+        get_size = ngx_aggr_event_json_write_size;
+        write = ngx_aggr_event_json_write_delim;
+        *p++ = '[';
+        break;
+
+    default:    /* ngx_aggr_query_fmt_prom */
+        get_size = ngx_aggr_event_prom_write_size;
+        write = ngx_aggr_event_prom_write;
+        break;
+    }
+
+    for (event = ar->head; event != NULL; event = event->next) {
+
+        if (query->having.handler != NULL) {
+            ar->cur = event;
+            fctx.ar = ar;
+
+            if (!query->having.handler(&fctx, query->having.data)) {
+                continue;
+            }
+        }
+
+        max_size = get_size(ar, event);
+
+        if ((size_t) (b->end - p) <= max_size) {
+
+            if (max_size >= buf_size) {
+                continue;
+            }
+
+            b->last = p;
+            *size += p - b->pos;
+
+            b = ngx_create_temp_buf(pool, buf_size);
+            if (b == NULL) {
+                return NULL;
+            }
+
+            cl = ngx_alloc_chain_link(pool);
+            if (cl == NULL) {
+                return NULL;
+            }
+
+            cl->buf = b;
+            *last = cl;
+            last = &cl->next;
+
+            p = b->last;
+        }
+
+        p = write(p, ar, event);
+    }
+
+    if (query->fmt == ngx_aggr_query_fmt_json) {
+        if (p[-1] == ',') {
+            p[-1] = ']';
+
+        } else {
+            *p++ = ']';
+        }
     }
 
     b->last = p;
@@ -1213,6 +1662,7 @@ ngx_aggr_result_process_single(ngx_aggr_result_t *ar,
     u_char                     *buf_end;
     u_char                     *event_end;
     u_char                      err[NGX_AGGR_EVENT_JSON_ERROR_MSG_SIZE];
+    ngx_int_t                   rc;
     ngx_aggr_event_t           *new;
     ngx_aggr_event_t           *old;
     ngx_aggr_event_json_ctx_t   ctx;
@@ -1247,7 +1697,12 @@ ngx_aggr_result_process_single(ngx_aggr_result_t *ar,
 
         ctx.p = ar->buf;
 
-        if (ngx_aggr_event_json_parse(&ctx, ar) != NGX_OK) {
+        rc = ngx_aggr_event_json_parse(&ctx, ar);
+        if (rc != NGX_OK) {
+            if (rc == NGX_ABORT) {
+                ar->buf_used = 0;
+                return event_end;
+            }
 
             if (ctx.p == buf_end && event_end == end) {
                 /* wait for more data */
@@ -1269,7 +1724,11 @@ ngx_aggr_result_process_single(ngx_aggr_result_t *ar,
 
         ctx.p = start;
 
-        if (ngx_aggr_event_json_parse(&ctx, ar) != NGX_OK) {
+        rc = ngx_aggr_event_json_parse(&ctx, ar);
+        if (rc != NGX_OK) {
+            if (rc == NGX_ABORT) {
+                return ctx.p;
+            }
 
             size = end - start;
             if (ctx.p == end && size < ar->buf_size) {
@@ -1296,14 +1755,21 @@ ngx_aggr_result_process_single(ngx_aggr_result_t *ar,
     new = ar->cur;
     old = ngx_aggr_event_rbtree_lookup(&ar->rbtree, new);
     if (old != NULL) {
-        ngx_aggr_event_update_metrics(old, new, ar);
+        if (ngx_aggr_event_update_metrics(old, new, ar) != NGX_OK) {
+            return NULL;
+        }
         return ctx.p;
+    }
+
+    if (ngx_aggr_event_copy_select_dims(ar, new) != NGX_OK) {
+        return NULL;
     }
 
     ngx_rbtree_insert(&ar->rbtree, &new->node);
 
     new->next = ar->head;
     ar->head = new;
+    ar->count++;
 
     (void) ngx_atomic_fetch_add(ngx_aggr_event_created, 1);
 
