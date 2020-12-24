@@ -1,0 +1,26 @@
+{
+    "main": {
+        "log_path": "/var/log/druidWrapper.log"
+    },
+    "datasources": {
+        "nginx": {
+            "type": "nginx-aggr-module",
+            "url": "http://localhost:8001/query",
+            "metrics": {
+                "count":        { "default": 1 },
+                "timeSum":      { "input": "x" },
+                "timeMax":      { "input": "x", "type": "max" }
+            },
+            "dims": {
+                "eventType":    { "input": "e" },
+                "ipAddress":    { "input": "i" },
+                "action":       { "input": "a" },
+                "errorCode":    { "input": "r" }
+            }
+        },
+        "druid": {
+            "type": "druid",
+            "url": "http://druid-broker:8082"
+        }
+    }
+}
