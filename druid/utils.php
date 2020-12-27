@@ -26,11 +26,11 @@ class Logger
         $this->write('Error: ' . $msg);
     }
 
-	public function dieError($msg)
-	{
-		$this->error($msg);
-		die;
-	}
+    public function dieError($msg)
+    {
+        $this->error($msg);
+        die;
+    }
 
     public function __destruct()
     {
