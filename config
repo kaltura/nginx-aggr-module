@@ -29,7 +29,8 @@ AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr_output.c               \
                 $ngx_addon_dir/src/ngx_str_table.c                 \
                 "
 
-AGGR_CORE_MODS="ngx_dgram_module                                   \
+AGGR_CORE_MODS="ngx_aggr_query_module                              \
+                ngx_dgram_module                                   \
                 ngx_dgram_core_module                              \
                 ngx_dgram_aggr_module                              \
                 "
