@@ -1389,15 +1389,6 @@ ngx_aggr_result_write_top(ngx_aggr_result_t *ar, ngx_pool_t *pool,
         return NULL;
     }
 
-    cl = ngx_alloc_chain_link(pool);
-    if (cl == NULL) {
-        return NULL;
-    }
-
-    cl->buf = b;
-    *last = cl;
-    last = &cl->next;
-
     p = b->last;
 
     switch (query->fmt) {
@@ -1425,14 +1416,6 @@ ngx_aggr_result_write_top(ngx_aggr_result_t *ar, ngx_pool_t *pool,
                 continue;
             }
 
-            b->last = p;
-            *size += p - b->pos;
-
-            b = ngx_create_temp_buf(pool, buf_size);
-            if (b == NULL) {
-                return NULL;
-            }
-
             cl = ngx_alloc_chain_link(pool);
             if (cl == NULL) {
                 return NULL;
@@ -1441,6 +1424,14 @@ ngx_aggr_result_write_top(ngx_aggr_result_t *ar, ngx_pool_t *pool,
             cl->buf = b;
             *last = cl;
             last = &cl->next;
+
+            b->last = p;
+            *size += p - b->pos;
+
+            b = ngx_create_temp_buf(pool, buf_size);
+            if (b == NULL) {
+                return NULL;
+            }
 
             p = b->last;
         }
@@ -1457,8 +1448,19 @@ ngx_aggr_result_write_top(ngx_aggr_result_t *ar, ngx_pool_t *pool,
         }
     }
 
-    b->last = p;
-    *size += p - b->pos;
+    if (p > b->pos) {
+        cl = ngx_alloc_chain_link(pool);
+        if (cl == NULL) {
+            return NULL;
+        }
+
+        cl->buf = b;
+        *last = cl;
+        last = &cl->next;
+
+        b->last = p;
+        *size += p - b->pos;
+    }
 
     return last;
 }
@@ -1491,15 +1493,6 @@ ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
     if (b == NULL) {
         return NULL;
     }
-
-    cl = ngx_alloc_chain_link(pool);
-    if (cl == NULL) {
-        return NULL;
-    }
-
-    cl->buf = b;
-    *last = cl;
-    last = &cl->next;
 
     p = b->last;
 
@@ -1536,14 +1529,6 @@ ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
                 continue;
             }
 
-            b->last = p;
-            *size += p - b->pos;
-
-            b = ngx_create_temp_buf(pool, buf_size);
-            if (b == NULL) {
-                return NULL;
-            }
-
             cl = ngx_alloc_chain_link(pool);
             if (cl == NULL) {
                 return NULL;
@@ -1552,6 +1537,14 @@ ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
             cl->buf = b;
             *last = cl;
             last = &cl->next;
+
+            b->last = p;
+            *size += p - b->pos;
+
+            b = ngx_create_temp_buf(pool, buf_size);
+            if (b == NULL) {
+                return NULL;
+            }
 
             p = b->last;
         }
@@ -1568,8 +1561,19 @@ ngx_aggr_result_write(ngx_aggr_result_t *ar, ngx_pool_t *pool,
         }
     }
 
-    b->last = p;
-    *size += p - b->pos;
+    if (p > b->pos) {
+        cl = ngx_alloc_chain_link(pool);
+        if (cl == NULL) {
+            return NULL;
+        }
+
+        cl->buf = b;
+        *last = cl;
+        last = &cl->next;
+
+        b->last = p;
+        *size += p - b->pos;
+    }
 
     return last;
 }
