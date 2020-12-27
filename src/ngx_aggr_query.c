@@ -11,12 +11,30 @@
     ((ns).len == sizeof(s) - 1 &&                                           \
      ngx_strncmp((ns).data, (s), sizeof(s) - 1) == 0)
 
+#define ngx_aggr_set_filter_ctx(cc, c, module)                              \
+    cc->filter_conf[module.ctx_index] = c;
+
+
+#define NGX_AGGR_MODULE           0x52474741   /* "AGGR" */
+
+#define NGX_AGGR_MAIN_CONF        0x02000000
+#define NGX_AGGR_FILTER_CONF      0x04000000
+#define NGX_AGGR_HAVING_CONF      0x08000000
+
+#define NGX_AGGR_MAIN_CONF_OFFSET    offsetof(ngx_aggr_conf_ctx_t, main_conf)
+#define NGX_AGGR_FILTER_CONF_OFFSET  offsetof(ngx_aggr_conf_ctx_t, filter_conf)
+
 
 typedef enum {
     ngx_aggr_query_ctx_filter,
     ngx_aggr_query_ctx_having,
 } ngx_aggr_query_ctx_e;
 
+
+typedef struct {
+    void                 **main_conf;
+    void                 **filter_conf;
+} ngx_aggr_conf_ctx_t;
 
 
 typedef struct {
@@ -64,13 +82,202 @@ typedef struct {
 static ngx_int_t ngx_aggr_query_filter_json(ngx_aggr_query_init_t *init,
     ngx_json_object_t *obj, ngx_aggr_query_filter_t *filter);
 
+static char *ngx_aggr_query_dim_conf(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
 
-/* must match ngx_aggr_query_fmt_xxx enum in order */
-static ngx_str_t  ngx_aggr_query_fmt_type_names[] = {
-    ngx_string("json"),
-    ngx_string("prom"),
-    ngx_null_string
+static char *ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
+
+static char *ngx_aggr_query_filter_block(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
+
+static char *ngx_aggr_query_filter_match_conf(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf);
+
+static char *ngx_aggr_query_filter_regex_conf(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf);
+
+static char *ngx_aggr_query_filter_compare_conf(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf);
+
+
+static ngx_conf_enum_t  ngx_query_formats[] = {
+    { ngx_string("json"), ngx_aggr_query_fmt_json },
+    { ngx_string("prom"), ngx_aggr_query_fmt_prom },
+    { ngx_null_string, 0 }
 };
+
+
+static ngx_command_t  ngx_aggr_query_commands[] = {
+
+    { ngx_string("dim"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_1MORE,
+      ngx_aggr_query_dim_conf,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("metric"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_1MORE,
+      ngx_aggr_query_metric_conf,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("filter"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_BLOCK|NGX_CONF_NOARGS,
+      ngx_aggr_query_filter_block,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, filter),
+      ngx_aggr_filter_and },
+
+    { ngx_string("having"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_BLOCK|NGX_CONF_NOARGS,
+      ngx_aggr_query_filter_block,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, having),
+      ngx_aggr_filter_and },
+
+    { ngx_string("format"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, fmt),
+      &ngx_query_formats },
+
+    { ngx_string("granularity"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_sec_slot,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, granularity),
+      NULL },
+
+    { ngx_string("hash_max_size"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, hash_max_size),
+      NULL },
+
+    { ngx_string("hash_bucket_size"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, hash_bucket_size),
+      NULL },
+
+    { ngx_string("max_event_size"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_size_slot,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, max_event_size),
+      NULL },
+
+    { ngx_string("output_buf_size"),
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_size_slot,
+      NGX_AGGR_MAIN_CONF_OFFSET,
+      offsetof(ngx_aggr_query_t, output_buf_size),
+      NULL },
+
+    { ngx_string("in"),
+      NGX_AGGR_FILTER_CONF|NGX_CONF_2MORE,
+      ngx_aggr_query_filter_match_conf,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_in },
+
+    { ngx_string("contains"),
+      NGX_AGGR_FILTER_CONF|NGX_CONF_2MORE,
+      ngx_aggr_query_filter_match_conf,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_contains },
+
+#if (NGX_PCRE)
+    { ngx_string("regex"),
+      NGX_AGGR_FILTER_CONF|NGX_CONF_2MORE,
+      ngx_aggr_query_filter_regex_conf,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_regex },
+#endif
+
+    { ngx_string("gt"),
+      NGX_AGGR_FILTER_CONF|NGX_AGGR_HAVING_CONF|NGX_CONF_TAKE2,
+      ngx_aggr_query_filter_compare_conf,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_gt },
+
+    { ngx_string("lt"),
+      NGX_AGGR_FILTER_CONF|NGX_AGGR_HAVING_CONF|NGX_CONF_TAKE2,
+      ngx_aggr_query_filter_compare_conf,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_lt },
+
+    { ngx_string("gte"),
+      NGX_AGGR_FILTER_CONF|NGX_AGGR_HAVING_CONF|NGX_CONF_TAKE2,
+      ngx_aggr_query_filter_compare_conf,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_gte },
+
+    { ngx_string("lte"),
+      NGX_AGGR_FILTER_CONF|NGX_AGGR_HAVING_CONF|NGX_CONF_TAKE2,
+      ngx_aggr_query_filter_compare_conf,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_lte },
+
+    { ngx_string("and"),
+      NGX_AGGR_FILTER_CONF|NGX_AGGR_HAVING_CONF|NGX_CONF_BLOCK|NGX_CONF_NOARGS,
+      ngx_aggr_query_filter_block,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_and },
+
+    { ngx_string("or"),
+      NGX_AGGR_FILTER_CONF|NGX_AGGR_HAVING_CONF|NGX_CONF_BLOCK|NGX_CONF_NOARGS,
+      ngx_aggr_query_filter_block,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_or },
+
+    { ngx_string("not"),
+      NGX_AGGR_FILTER_CONF|NGX_AGGR_HAVING_CONF|NGX_CONF_BLOCK|NGX_CONF_NOARGS,
+      ngx_aggr_query_filter_block,
+      NGX_AGGR_FILTER_CONF_OFFSET,
+      0,
+      ngx_aggr_filter_not },
+
+      ngx_null_command
+};
+
+
+static ngx_core_module_t  ngx_aggr_query_module_ctx = {
+    ngx_string("aggr_query"),
+    NULL,
+    NULL,
+};
+
+
+ngx_module_t  ngx_aggr_query_module = {
+    NGX_MODULE_V1,
+    &ngx_aggr_query_module_ctx,            /* module context */
+    ngx_aggr_query_commands,               /* module directives */
+    NGX_AGGR_MODULE,                       /* module type */
+    NULL,                                  /* init master */
+    NULL,                                  /* init module */
+    NULL,                                  /* init process */
+    NULL,                                  /* init thread */
+    NULL,                                  /* exit thread */
+    NULL,                                  /* exit process */
+    NULL,                                  /* exit master */
+    NGX_MODULE_V1_PADDING
+};
+
 
 /* must match ngx_aggr_query_dim_xxx enum in order */
 static ngx_str_t  ngx_aggr_query_dim_type_names[] = {
@@ -88,6 +295,9 @@ static ngx_str_t  ngx_aggr_query_metric_type_names[] = {
 };
 
 static ngx_str_t  ngx_aggr_query_filter_type = ngx_string("type");
+
+
+static ngx_uint_t  ngx_aggr_max_module;
 
 
 /* a copy of ngx_hash_init with ngx_strlow replaced by ngx_memcpy */
@@ -480,17 +690,15 @@ ngx_aggr_query_dim_push(ngx_aggr_query_t *query, ngx_aggr_query_dim_t *dim)
 
 
 static char *
-ngx_aggr_query_dim_conf(ngx_conf_t *cf, ngx_aggr_query_t *query)
+ngx_aggr_query_dim_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t              cur;
     ngx_str_t             *value;
     ngx_uint_t             i;
+    ngx_aggr_query_t      *query;
     ngx_aggr_query_dim_t   dim;
 
-    if (cf->args->nelts < 2) {
-        return "invalid number of arguments in \"dim\" directive";
-    }
-
+    query = conf;
     value = cf->args->elts;
 
     if (cf->args->nelts == 3 && ngx_strcmp(value[2].data, "type=time") == 0) {
@@ -817,17 +1025,16 @@ ngx_aggr_query_metric_push(ngx_aggr_query_t *query,
 
 
 static char *
-ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_aggr_query_t *query)
+ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     u_char                   *end;
     ngx_str_t                 cur;
     ngx_str_t                *value;
     ngx_uint_t                i;
+    ngx_aggr_query_t         *query;
     ngx_aggr_query_metric_t   metric;
 
-    if (cf->args->nelts < 2) {
-        return "invalid number of arguments in \"metric\" directive";
-    }
+    query = conf;
 
     value = cf->args->elts;
 
@@ -1047,6 +1254,109 @@ ngx_aggr_query_metrics_set_out_offsets(ngx_aggr_query_init_t *init)
 
 /* filter */
 
+static ngx_int_t
+ngx_aggr_query_str_hash(ngx_pool_t *pool, ngx_str_hash_t *dst, ngx_str_t *src,
+    ngx_flag_t lower)
+{
+    if (lower) {
+        dst->s.data = ngx_pnalloc(pool, src->len);
+        if (dst->s.data == NULL) {
+            return NGX_ERROR;
+        }
+
+        ngx_strlow(dst->s.data, src->data, src->len);
+        dst->s.len = src->len;
+
+    } else {
+        dst->s = *src;
+    }
+
+    dst->hash = ngx_hash_key(dst->s.data, dst->s.len);
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_aggr_query_filter_get_metric_offset(ngx_aggr_query_init_t *init,
+    ngx_aggr_query_metric_t *metric, ngx_uint_t *offset)
+{
+    ngx_aggr_query_metric_in_t   *input;
+    ngx_aggr_query_metric_out_t  *output;
+
+    switch (init->ctx) {
+
+    case ngx_aggr_query_ctx_filter:
+        input = ngx_aggr_query_metric_get_input(init->query, metric);
+        if (input == NULL) {
+            return NGX_ERROR;
+        }
+
+        *offset = input->offset;
+        break;
+
+    case ngx_aggr_query_ctx_having:
+        output = ngx_aggr_query_metric_get_output(init->query, &metric->input);
+        if (output == NULL) {
+            ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
+                "ngx_aggr_query_filter_get_metric_offset: "
+                "unknown metric \"%V\"", &metric->input);
+            return NGX_BAD_QUERY;
+        }
+
+        *offset = output->offset;
+        break;
+
+    default:
+        *offset = 0;
+    }
+
+    return NGX_OK;
+}
+
+
+static void
+ngx_aggr_query_filter_dims_set_offsets(ngx_aggr_query_init_t *init)
+{
+    ngx_uint_t                 i, n;
+    ngx_uint_t                 index;
+    ngx_uint_t               **offp;
+    ngx_aggr_query_dim_in_t   *input;
+
+    input = init->query->dims_in.elts;
+
+    offp = init->dim_temp_offs.elts;
+    n = init->dim_temp_offs.nelts;
+
+    for (i = 0; i < n; i++) {
+        index = *offp[i];
+        *offp[i] = input[index].temp_offset;
+    }
+}
+
+
+static void
+ngx_aggr_query_filter_metrics_set_offsets(ngx_aggr_query_init_t *init)
+{
+    ngx_uint_t                    i, n;
+    ngx_uint_t                    index;
+    ngx_uint_t                  **offp;
+    ngx_aggr_query_metric_in_t   *input;
+
+    input = init->query->metrics_in.elts;
+
+    offp = init->metric_offs.elts;
+    n = init->metric_offs.nelts;
+
+    for (i = 0; i < n; i++) {
+        index = *offp[i];
+        *offp[i] = input[index].offset;
+    }
+}
+
+
+/* filter json */
+
 static ngx_str_hash_t *
 ngx_aggr_query_copy_json_str_list(ngx_pool_t *pool, ngx_json_array_t *arr,
     ngx_flag_t lower)
@@ -1075,20 +1385,9 @@ ngx_aggr_query_copy_json_str_list(ngx_pool_t *pool, ngx_json_array_t *arr,
             src = part->first;
         }
 
-        if (lower) {
-            dst->s.data = ngx_pnalloc(pool, src->len);
-            if (dst->s.data == NULL) {
-                return NULL;
-            }
-
-            ngx_strlow(dst->s.data, src->data, src->len);
-            dst->s.len = src->len;
-
-        } else {
-            dst->s = *src;
+        if (ngx_aggr_query_str_hash(pool, dst, src, lower) != NGX_OK) {
+            return NULL;
         }
-
-        dst->hash = ngx_hash_key(dst->s.data, dst->s.len);
 
         dst++;
     }
@@ -1294,7 +1593,8 @@ ngx_aggr_query_filter_regex_json(ngx_aggr_query_init_t *init,
     rc.err.data = errstr;
 
     if (ngx_regex_compile(&rc) != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, init->pool->log, 0, "%V", &rc.err);
+        ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
+            "ngx_aggr_query_filter_regex_json: %V", &rc.err);
         return NGX_BAD_QUERY;
     }
 
@@ -1319,44 +1619,6 @@ ngx_aggr_query_filter_regex_json(ngx_aggr_query_init_t *init,
     return NGX_OK;
 }
 #endif
-
-
-static ngx_int_t
-ngx_aggr_query_filter_get_metric_offset(ngx_aggr_query_init_t *init,
-    ngx_aggr_query_metric_t *metric, ngx_uint_t *offset)
-{
-    ngx_aggr_query_metric_in_t   *input;
-    ngx_aggr_query_metric_out_t  *output;
-
-    switch (init->ctx) {
-
-    case ngx_aggr_query_ctx_filter:
-        input = ngx_aggr_query_metric_get_input(init->query, metric);
-        if (input == NULL) {
-            return NGX_ERROR;
-        }
-
-        *offset = input->offset;
-        break;
-
-    case ngx_aggr_query_ctx_having:
-        output = ngx_aggr_query_metric_get_output(init->query, &metric->input);
-        if (output == NULL) {
-            ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-                "ngx_aggr_query_filter_get_metric_offset: "
-                "unknown metric \"%V\"", &metric->input);
-            return NGX_BAD_QUERY;
-        }
-
-        *offset = output->offset;
-        break;
-
-    default:
-        *offset = 0;
-    }
-
-    return NGX_OK;
-}
 
 
 static ngx_int_t
@@ -1408,7 +1670,7 @@ ngx_aggr_query_filter_compare_json(ngx_aggr_query_init_t *init,
 
     if (metric.input.data == NULL) {
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-            "ngx_aggr_query_filter_regex_json: missing \"metric\" key");
+            "ngx_aggr_query_filter_compare_json: missing \"metric\" key");
         return NGX_BAD_QUERY;
     }
 
@@ -1437,49 +1699,6 @@ ngx_aggr_query_filter_compare_json(ngx_aggr_query_init_t *init,
     *offp = &ctx->offset;
 
     *data = ctx;
-
-    return NGX_OK;
-}
-
-
-static ngx_int_t
-ngx_aggr_query_filters_json(ngx_aggr_query_init_t *init,
-    ngx_json_array_t *src_arr, ngx_array_t *dst_arr)
-{
-    ngx_int_t                 rc;
-    ngx_array_part_t         *part;
-    ngx_json_object_t        *src;
-    ngx_aggr_query_filter_t  *dst;
-
-    if (ngx_array_init(dst_arr, init->pool, src_arr->count,
-        sizeof(ngx_aggr_query_filter_t)) != NGX_OK)
-    {
-        return NGX_ERROR;
-    }
-
-    part = &src_arr->part;
-
-    for (src = part->first; ; src++) {
-
-        if ((void *) src >= part->last) {
-            if (part->next == NULL) {
-                break;
-            }
-
-            part = part->next;
-            src = part->first;
-        }
-
-        dst = ngx_array_push(dst_arr);
-        if (dst == NULL) {
-            return NGX_ERROR;
-        }
-
-        rc = ngx_aggr_query_filter_json(init, src, dst);
-        if (rc != NGX_OK) {
-            return rc;
-        }
-    }
 
     return NGX_OK;
 }
@@ -1526,7 +1745,7 @@ ngx_aggr_query_filter_nest_json(ngx_aggr_query_init_t *init,
 
     if (nest == NULL) {
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-            "ngx_aggr_query_filter_match_json: missing \"filter\" key");
+            "ngx_aggr_query_filter_nest_json: missing \"filter\" key");
         return NGX_BAD_QUERY;
     }
 
@@ -1542,6 +1761,49 @@ ngx_aggr_query_filter_nest_json(ngx_aggr_query_init_t *init,
     }
 
     *data = ctx;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_aggr_query_filters_json(ngx_aggr_query_init_t *init,
+    ngx_json_array_t *src_arr, ngx_array_t *dst_arr)
+{
+    ngx_int_t                 rc;
+    ngx_array_part_t         *part;
+    ngx_json_object_t        *src;
+    ngx_aggr_query_filter_t  *dst;
+
+    if (ngx_array_init(dst_arr, init->pool, src_arr->count,
+                       sizeof(ngx_aggr_query_filter_t)) != NGX_OK)
+    {
+        return NGX_ERROR;
+    }
+
+    part = &src_arr->part;
+
+    for (src = part->first; ; src++) {
+
+        if ((void *) src >= part->last) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            src = part->first;
+        }
+
+        dst = ngx_array_push(dst_arr);
+        if (dst == NULL) {
+            return NGX_ERROR;
+        }
+
+        rc = ngx_aggr_query_filter_json(init, src, dst);
+        if (rc != NGX_OK) {
+            return rc;
+        }
+    }
 
     return NGX_OK;
 }
@@ -1747,43 +2009,372 @@ ngx_aggr_query_filter_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj,
 }
 
 
-static void
-ngx_aggr_query_filter_dims_set_offsets(ngx_aggr_query_init_t *init)
+/* filter conf */
+
+static ngx_str_hash_t *
+ngx_aggr_query_copy_str_list(ngx_pool_t *pool, ngx_str_t *src,
+    ngx_uint_t count, ngx_flag_t lower)
 {
-    ngx_uint_t                 i, n;
-    ngx_uint_t                 index;
-    ngx_uint_t               **offp;
-    ngx_aggr_query_dim_in_t   *input;
+    ngx_str_t       *end;
+    ngx_str_hash_t  *dst;
+    ngx_str_hash_t  *list;
 
-    input = init->query->dims_in.elts;
-
-    offp = init->dim_temp_offs.elts;
-    n = init->dim_temp_offs.nelts;
-
-    for (i = 0; i < n; i++) {
-        index = *offp[i];
-        *offp[i] = input[index].temp_offset;
+    list = ngx_palloc(pool, sizeof(list[0]) * count);
+    if (list == NULL) {
+        return NULL;
     }
+
+    for (end = src + count, dst = list; src < end; src++, dst++) {
+        if (ngx_aggr_query_str_hash(pool, dst, src, lower) != NGX_OK) {
+            return NULL;
+        }
+    }
+
+    return list;
 }
 
 
-static void
-ngx_aggr_query_filter_metrics_set_offsets(ngx_aggr_query_init_t *init)
+static char *
+ngx_aggr_query_filter_match_conf(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf)
 {
-    ngx_uint_t                    i, n;
-    ngx_uint_t                    index;
-    ngx_uint_t                  **offp;
-    ngx_aggr_query_metric_in_t   *input;
+    ngx_str_t                       *value;
+    ngx_uint_t                       i, n;
+    ngx_uint_t                     **offp;
+    ngx_aggr_query_dim_t             dim;
+    ngx_aggr_query_init_t           *init;
+    ngx_aggr_query_dim_in_t         *input;
+    ngx_aggr_query_filter_t         *filter;
+    ngx_aggr_query_filter_match_t   *ctx;
 
-    input = init->query->metrics_in.elts;
+    ngx_memzero(&dim, sizeof(dim));
 
-    offp = init->metric_offs.elts;
-    n = init->metric_offs.nelts;
+    value = cf->args->elts;
+    n = cf->args->nelts;
 
-    for (i = 0; i < n; i++) {
-        index = *offp[i];
-        *offp[i] = input[index].offset;
+    for (i = 2; ; i++) {
+
+        if (i >= n) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                "invalid number of arguments in \"%V\" directive", value);
+            return NGX_CONF_ERROR;
+        }
+
+        if (ngx_strncmp(value[i].data, "case_sensitive=o", 16) == 0) {
+            if (ngx_strcmp(&value[i].data[16], "n") == 0) {
+                dim.lower = 0;
+
+            } else if (ngx_strcmp(&value[i].data[16], "ff") == 0) {
+                dim.lower = 1;
+
+            } else {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                    "invalid param \"%V\"", &value[i]);
+                return NGX_CONF_ERROR;
+            }
+
+            continue;
+        }
+
+        break;
     }
+
+    dim.input = value[1];
+    dim.type = ngx_aggr_query_dim_filter;
+
+    init = cf->handler_conf;
+    input = ngx_aggr_query_dim_get_input(init->query, &dim);
+    if (input == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+
+    ctx = ngx_palloc(cf->pool, sizeof(*ctx));
+    if (ctx == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ctx->values_len = n - i;
+    ctx->values = ngx_aggr_query_copy_str_list(cf->pool, value + i,
+        ctx->values_len, dim.lower);
+    if (ctx->values == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ctx->temp_offset = input->offset;
+
+    offp = ngx_array_push(&init->dim_temp_offs);
+    if (offp == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    *offp = &ctx->temp_offset;
+
+
+    filter = ngx_array_push((ngx_array_t *) conf);
+    if (filter == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    filter->handler = cmd->post;
+    filter->data = ctx;
+
+    return NGX_CONF_OK;
+}
+
+
+#if (NGX_PCRE)
+static char *
+ngx_aggr_query_filter_regex_conf(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf)
+{
+    ngx_str_t                       *value;
+    ngx_uint_t                       i, n;
+    ngx_uint_t                     **offp;
+    ngx_flag_t                       case_sensitive;
+    ngx_regex_compile_t              rc;
+    ngx_aggr_query_dim_t             dim;
+    ngx_aggr_query_init_t           *init;
+    ngx_aggr_query_dim_in_t         *input;
+    ngx_aggr_query_filter_t         *filter;
+    ngx_aggr_query_filter_regex_t   *ctx;
+    u_char                           errstr[NGX_MAX_CONF_ERRSTR];
+
+    ngx_memzero(&dim, sizeof(dim));
+    case_sensitive = 1;
+
+    value = cf->args->elts;
+    n = cf->args->nelts;
+
+    for (i = 2; i < n; i++) {
+
+        if (ngx_strncmp(value[i].data, "case_sensitive=o", 16) == 0) {
+            if (ngx_strcmp(&value[i].data[16], "n") == 0) {
+                case_sensitive = 1;
+
+            } else if (ngx_strcmp(&value[i].data[16], "ff") == 0) {
+                case_sensitive = 0;
+
+            } else {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                    "invalid param \"%V\"", &value[i]);
+                return NGX_CONF_ERROR;
+            }
+
+            continue;
+        }
+
+        break;
+    }
+
+    if (i != n - 1) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+            "invalid number of arguments in \"%V\" directive", value);
+        return NGX_CONF_ERROR;
+    }
+
+    dim.input = value[1];
+    dim.type = ngx_aggr_query_dim_filter;
+
+    init = cf->handler_conf;
+    input = ngx_aggr_query_dim_get_input(init->query, &dim);
+    if (input == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+
+    ngx_memzero(&rc, sizeof(ngx_regex_compile_t));
+    rc.pattern = value[n - 1];
+    rc.pool = init->pool;
+    rc.options = !case_sensitive ? NGX_REGEX_CASELESS : 0;
+    rc.err.len = NGX_MAX_CONF_ERRSTR;
+    rc.err.data = errstr;
+
+    if (ngx_regex_compile(&rc) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "%V", &rc.err);
+        return NGX_CONF_ERROR;
+    }
+
+
+    ctx = ngx_palloc(cf->pool, sizeof(*ctx));
+    if (ctx == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ctx->re = rc.regex;
+    ctx->temp_offset = input->offset;
+
+    offp = ngx_array_push(&init->dim_temp_offs);
+    if (offp == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    *offp = &ctx->temp_offset;
+
+
+    filter = ngx_array_push((ngx_array_t *) conf);
+    if (filter == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    filter->handler = cmd->post;
+    filter->data = ctx;
+
+    return NGX_CONF_OK;
+}
+#endif
+
+
+static char *
+ngx_aggr_query_filter_compare_conf(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf)
+{
+    u_char                            *end;
+    ngx_str_t                         *value;
+    ngx_uint_t                         offset;
+    ngx_uint_t                       **offp;
+    ngx_aggr_query_init_t             *init;
+    ngx_aggr_query_metric_t            metric;
+    ngx_aggr_query_filter_t           *filter;
+    ngx_aggr_query_filter_compare_t   *ctx;
+
+    value = cf->args->elts;
+
+    ngx_memzero(&metric, sizeof(metric));
+    metric.input = value[1];
+    metric.type = ngx_aggr_query_metric_sum;
+
+    init = cf->handler_conf;
+    if (ngx_aggr_query_filter_get_metric_offset(init, &metric, &offset)
+        != NGX_OK)
+    {
+        return NGX_CONF_ERROR;
+    }
+
+
+    ctx = ngx_palloc(cf->pool, sizeof(*ctx));
+    if (ctx == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ctx->value = strtod((char *) value[2].data, (char **) &end);
+    if (end != value[2].data + value[2].len) {
+        return "invalid number";
+    }
+
+    ctx->offset = offset;
+
+    offp = ngx_array_push(&init->metric_offs);
+    if (offp == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    *offp = &ctx->offset;
+
+
+    filter = ngx_array_push((ngx_array_t *) conf);
+    if (filter == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    filter->handler = cmd->post;
+    filter->data = ctx;
+
+    return NGX_CONF_OK;
+}
+
+
+static char *
+ngx_aggr_query_filter_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    char                           *rv, *p;
+    ngx_conf_t                      save;
+    ngx_aggr_conf_ctx_t            *conf_ctx;
+    ngx_aggr_query_init_t          *init;
+    ngx_aggr_query_filter_t        *filter;
+    ngx_aggr_query_filter_pt        handler;
+    ngx_aggr_query_filter_group_t  *ctx;
+
+    ctx = ngx_palloc(cf->pool, sizeof(*ctx));
+    if (ctx == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (ngx_array_init(&ctx->filters, cf->pool, 1,
+                       sizeof(ngx_aggr_query_filter_t))
+        != NGX_OK)
+    {
+        return NGX_CONF_ERROR;
+    }
+
+    save = *cf;
+
+    conf_ctx = cf->ctx;
+    ngx_aggr_set_filter_ctx(conf_ctx, &ctx->filters, ngx_aggr_query_module);
+
+    if (cf->cmd_type == NGX_AGGR_MAIN_CONF) {
+
+        init = cf->handler_conf;
+        if (cmd->offset == offsetof(ngx_aggr_query_t, filter)) {
+            cf->cmd_type = NGX_AGGR_FILTER_CONF;
+            init->ctx = ngx_aggr_query_ctx_filter;
+
+        } else if (cmd->offset == offsetof(ngx_aggr_query_t, having)) {
+            cf->cmd_type = NGX_AGGR_HAVING_CONF;
+            init->ctx = ngx_aggr_query_ctx_having;
+
+        } else {
+            return "internal error";
+        }
+
+        p = conf;
+        filter = (ngx_aggr_query_filter_t *) (p + cmd->offset);
+
+    } else {
+        filter = ngx_array_push((ngx_array_t *) conf);
+        if (filter == NULL) {
+            return NGX_CONF_ERROR;
+        }
+    }
+
+    rv = ngx_conf_parse(cf, NULL);
+
+    *cf = save;
+
+    if (cf->cmd_type == NGX_AGGR_MAIN_CONF) {
+        ngx_aggr_set_filter_ctx(conf_ctx, NULL, ngx_aggr_query_module);
+
+    } else {
+        ngx_aggr_set_filter_ctx(conf_ctx, conf, ngx_aggr_query_module);
+    }
+
+    if (rv != NGX_CONF_OK) {
+        return rv;
+    }
+
+    handler = cmd->post;
+
+    if (handler == ngx_aggr_filter_not) {
+        filter->data = ngx_palloc(cf->pool, sizeof(*filter));
+        if (filter->data == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        filter->handler = handler;
+        filter = filter->data;
+
+        handler = ngx_aggr_filter_and;
+    }
+
+    if (ctx->filters.nelts == 1) {
+        *filter = *(ngx_aggr_query_filter_t *) ctx->filters.elts;
+
+    } else {
+        filter->data = ctx;
+        filter->handler = handler;
+    }
+
+    return NGX_CONF_OK;
 }
 
 
@@ -1999,119 +2590,13 @@ ngx_aggr_query_create(ngx_aggr_query_init_t *init)
 }
 
 
-static char *
-ngx_aggr_query_conf_handler(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
-{
-    ngx_str_t              *value;
-    ngx_aggr_query_t       *query;
-    ngx_aggr_query_init_t  *init;
-
-    value = cf->args->elts;
-
-    init = cf->ctx;
-    query = init->query;
-
-    if (ngx_strcmp(value[0].data, "dim") == 0) {
-        return ngx_aggr_query_dim_conf(cf, query);
-
-    } else if (ngx_strcmp(value[0].data, "metric") == 0) {
-        return ngx_aggr_query_metric_conf(cf, query);
-
-    } else if (ngx_strcmp(value[0].data, "format") == 0) {
-        if (cf->args->nelts != 2) {
-            goto invalid;
-        }
-
-        query->fmt = ngx_aggr_query_enum(ngx_aggr_query_fmt_type_names,
-            &value[1]);
-        if (query->fmt < 0) {
-            return "invalid value";
-        }
-
-        return NGX_CONF_OK;
-
-    } else if (ngx_strcmp(value[0].data, "granularity") == 0) {
-        if (cf->args->nelts != 2) {
-            goto invalid;
-        }
-
-        query->granularity = ngx_parse_time(&value[1], 1);
-        if (query->granularity == (time_t) NGX_ERROR) {
-            return "invalid value";
-        }
-
-        return NGX_CONF_OK;
-
-    } else if (ngx_strcmp(value[0].data, "hash_max_size") == 0) {
-        if (cf->args->nelts != 2) {
-            goto invalid;
-        }
-
-        query->hash_max_size = ngx_atoi(value[1].data, value[1].len);
-        if (query->hash_max_size == (size_t) NGX_ERROR) {
-            return "invalid value";
-        }
-
-        return NGX_CONF_OK;
-
-    } else if (ngx_strcmp(value[0].data, "hash_bucket_size") == 0) {
-        if (cf->args->nelts != 2) {
-            goto invalid;
-        }
-
-        query->hash_bucket_size = ngx_atoi(value[1].data, value[1].len);
-        if (query->hash_bucket_size == (size_t) NGX_ERROR) {
-            return "invalid value";
-        }
-
-        return NGX_CONF_OK;
-
-    } else if (ngx_strcmp(value[0].data, "max_event_size") == 0) {
-        if (cf->args->nelts != 2) {
-            goto invalid;
-        }
-
-        query->max_event_size = ngx_parse_size(&value[1]);
-        if (query->max_event_size == (size_t) NGX_ERROR) {
-            return "invalid value";
-        }
-
-        return NGX_CONF_OK;
-
-    } else if (ngx_strcmp(value[0].data, "output_buf_size") == 0) {
-        if (cf->args->nelts != 2) {
-            goto invalid;
-        }
-
-        query->output_buf_size = ngx_parse_size(&value[1]);
-        if (query->output_buf_size == (size_t) NGX_ERROR) {
-            return "invalid value";
-        }
-
-        return NGX_CONF_OK;
-
-    } else {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-            " unknown directive \"%V\"", &value[0]);
-
-        return NGX_CONF_ERROR;
-    }
-
-invalid:
-
-    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-        "invalid number of arguments in \"%V\" directive", &value[0]);
-
-    return NGX_CONF_ERROR;
-}
-
-
 ngx_aggr_query_t *
 ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t do_init)
 {
     char                   *rv;
     ngx_conf_t              save;
     ngx_aggr_query_t       *query;
+    ngx_aggr_conf_ctx_t     ctx;
     ngx_aggr_query_init_t   init;
 
     init.pool = cf->pool;
@@ -2123,9 +2608,29 @@ ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t do_init)
 
     query = init.query;
 
+    ngx_aggr_max_module = ngx_count_modules(cf->cycle, NGX_AGGR_MODULE);
+
+    ctx.main_conf = ngx_pcalloc(cf->temp_pool,
+                                sizeof(void *) * ngx_aggr_max_module);
+    if (ctx.main_conf == NULL) {
+        return NULL;
+    }
+
+    ctx.filter_conf = ngx_pcalloc(cf->temp_pool,
+                                  sizeof(void *) * ngx_aggr_max_module);
+    if (ctx.filter_conf == NULL) {
+        return NULL;
+    }
+
+    ctx.main_conf[ngx_aggr_query_module.ctx_index] = query;
+
     save = *cf;
-    cf->ctx = &init;
-    cf->handler = ngx_aggr_query_conf_handler;
+
+    cf->ctx = &ctx;
+
+    cf->module_type = NGX_AGGR_MODULE;
+    cf->cmd_type = NGX_AGGR_MAIN_CONF;
+    cf->handler_conf = &init;
 
     rv = ngx_conf_parse(cf, NULL);
 
@@ -2243,7 +2748,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
 
     if (query->dims_out.nelts <= 0 && query->metrics_out.nelts <= 0) {
         ngx_log_error(NGX_LOG_ERR, pool->log, 0,
-            "no dim/metric specified");
+            "ngx_aggr_query_json: no dim/metric specified");
         return NGX_BAD_QUERY;
     }
 

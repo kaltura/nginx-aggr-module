@@ -321,6 +321,24 @@ The following optional parameters can be specified:
 * `input` - sets the name of the key in the input JSON, the default is `output_name`.
 * `default` - sets a default value for the metric, the default will be used if the metric does not appear in the input JSON.
 
+#### filter
+* **syntax**: `filter { ... }`
+* **default**: `-`
+* **context**: `query`
+
+Sets the filter of the query, see [Aggregation filter directives](#aggregation-filter-directives) below.
+The filter is applied to all input events during aggregation, events that don't match the filter are ignored.
+If multiple filters are defined inside the block, they are combined with AND.
+
+#### having
+* **syntax**: `having { ... }`
+* **default**: `-`
+* **context**: `query`
+
+Sets the filter of the query, see [Aggregation filter directives](#aggregation-filter-directives) below.
+The filter is applied to all output events post aggregation, events that don't match the filter are not included in the output.
+If multiple filters are defined inside the block, they are combined with AND.
+
 #### format
 * **syntax**: `format json|prom;`
 * **default**: `-`
@@ -363,6 +381,69 @@ Events larger than this size cannot be reassembled if split across multiple `rec
 * **context**: `query`
 
 Sets the size of the buffers allocated for holding the result set.
+
+### Aggregation filter directives
+
+#### in
+* **syntax**: `in dim [case_sensitive=on|off] value1 [value2 ...];`
+* **context**: `filter`
+
+Checks whether the value of an input dimension is in the provided list of values.
+
+#### contains
+* **syntax**: `contains dim [case_sensitive=on|off] value1 [value2 ...];`
+* **context**: `filter`
+
+Checks whether any of the provided values is contained in the value of an input dimension.
+
+#### regex
+* **syntax**: `regex dim [case_sensitive=on|off] pattern;`
+* **context**: `filter`
+
+Checks whether the value of an input dimension matches the provided regular expression pattern.
+
+#### gt
+* **syntax**: `gt metric value;`
+* **context**: `filter, having`
+
+Checks whether the value of a metric is greater than the provided reference value.
+
+#### lt
+* **syntax**: `lt metric value;`
+* **context**: `filter, having`
+
+Checks whether the value of a metric is less than the provided reference value.
+
+#### gte
+* **syntax**: `gte metric value;`
+* **context**: `filter, having`
+
+Checks whether the value of a metric is greater than or equal to the provided reference value.
+
+#### lte
+* **syntax**: `lte metric value;`
+* **context**: `filter, having`
+
+Checks whether the value of a metric is less than or equal to the provided reference value.
+
+#### and
+* **syntax**: `and { ... }`
+* **context**: `filter, having`
+
+Applies a logical AND to the results of all the filters defined in the block.
+
+#### or
+* **syntax**: `or { ... }`
+* **context**: `filter, having`
+
+Applies a logical OR to the results of all the filters defined in the block.
+
+#### not
+* **syntax**: `not { ... }`
+* **context**: `filter, having`
+
+Applies a logical NOT to the result of the filter defined in the block.
+If multiple filters are defined in the block, their results are AND'ed before applying NOT.
 
 ## Input event JSON
 
