@@ -1,6 +1,7 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <pthread.h>
 #include "ngx_dgram.h"
 
 

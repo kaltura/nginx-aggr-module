@@ -1,5 +1,6 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
+#include <pthread.h>
 #if (NGX_HAVE_LIBRDKAFKA)
 #include "ngx_kafka_producer.h"
 #endif

@@ -31,7 +31,9 @@ typedef struct {
     ngx_http_complex_value_t   *name;
     ngx_aggr_query_t           *query;
     ngx_array_t                 queries;    /* ngx_http_aggr_query_t */
+#if (NGX_THREADS)
     ngx_thread_pool_t          *tp;
+#endif
 } ngx_http_aggr_loc_conf_t;
 
 
@@ -48,8 +50,10 @@ static char *ngx_http_aggr_static(ngx_conf_t *cf, ngx_command_t *cmd,
 static char *ngx_http_aggr_status(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
+#if (NGX_THREADS)
 static char *ngx_thread_pool_slot(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
+#endif
 
 
 static ngx_command_t  ngx_http_aggr_commands[] = {
@@ -82,12 +86,14 @@ static ngx_command_t  ngx_http_aggr_commands[] = {
       0,
       NULL },
 
+#if (NGX_THREADS)
     { ngx_string("aggr_thread_pool"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_thread_pool_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_aggr_loc_conf_t, tp),
       NULL },
+#endif
 
       ngx_null_command
 };
@@ -129,6 +135,7 @@ static ngx_str_t  ngx_http_aggr_type_json = ngx_string("application/json");
 static ngx_str_t  ngx_http_aggr_type_text = ngx_string("text/plain");
 
 
+#if (NGX_THREADS)
 static char *
 ngx_thread_pool_slot(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -165,6 +172,7 @@ ngx_thread_pool_slot(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     return NGX_CONF_OK;
 }
+#endif
 
 
 static ngx_int_t
@@ -333,6 +341,7 @@ failed:
 }
 
 
+#if (NGX_THREADS)
 static void
 ngx_http_aggr_thread_done(ngx_event_t *ev)
 {
@@ -353,6 +362,7 @@ done:
 
     ngx_http_finalize_request(ctx->r, rc);
 }
+#endif
 
 
 static ngx_int_t
@@ -360,11 +370,11 @@ ngx_http_aggr_post_queries(ngx_http_request_t *r,
     ngx_http_aggr_query_t *queries, ngx_uint_t nelts)
 {
     ngx_uint_t                   i;
+#if (NGX_THREADS)
     ngx_thread_task_t           *task;
     ngx_http_aggr_loc_conf_t    *alcf;
+#endif
     ngx_http_aggr_thread_ctx_t  *ctx;
-
-    alcf = ngx_http_get_module_loc_conf(r, ngx_http_aggr_module);
 
     ctx = ngx_palloc(r->pool, sizeof(*ctx) + sizeof(ctx->windows[0]) * nelts);
     if (ctx == NULL) {
@@ -385,34 +395,38 @@ ngx_http_aggr_post_queries(ngx_http_request_t *r,
         }
     }
 
-    if (alcf->tp == NULL) {
-        ngx_http_aggr_thread(ctx, r->connection->log);
-        if (ctx->rc != NGX_OK) {
+#if (NGX_THREADS)
+    alcf = ngx_http_get_module_loc_conf(r, ngx_http_aggr_module);
+
+    if (alcf->tp != NULL) {
+        task = ngx_thread_task_alloc(r->pool, 0);
+        if (task == NULL) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
 
-        return ngx_http_aggr_send_response(ctx->r, ctx->content_type, ctx->out,
-            ctx->size);
-    }
+        task->ctx = ctx;
 
-    task = ngx_thread_task_alloc(r->pool, 0);
-    if (task == NULL) {
+        task->handler = ngx_http_aggr_thread;
+        task->event.handler = ngx_http_aggr_thread_done;
+        task->event.data = ctx;
+
+        if (ngx_thread_task_post(alcf->tp, task) != NGX_OK) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        r->main->count++;
+
+        return NGX_DONE;
+    }
+#endif
+
+    ngx_http_aggr_thread(ctx, r->connection->log);
+    if (ctx->rc != NGX_OK) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    task->ctx = ctx;
-
-    task->handler = ngx_http_aggr_thread;
-    task->event.handler = ngx_http_aggr_thread_done;
-    task->event.data = ctx;
-
-    if (ngx_thread_task_post(alcf->tp, task) != NGX_OK) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    r->main->count++;
-
-    return NGX_DONE;
+    return ngx_http_aggr_send_response(ctx->r, ctx->content_type, ctx->out,
+        ctx->size);
 }
 
 
@@ -609,7 +623,9 @@ ngx_http_aggr_create_loc_conf(ngx_conf_t *cf)
         return NULL;
     }
 
+#if (NGX_THREADS)
     conf->tp = NGX_CONF_UNSET_PTR;
+#endif
 
     return conf;
 }
@@ -618,11 +634,13 @@ ngx_http_aggr_create_loc_conf(ngx_conf_t *cf)
 static char *
 ngx_http_aggr_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 {
+#if (NGX_THREADS)
     ngx_http_aggr_loc_conf_t  *prev = parent;
     ngx_http_aggr_loc_conf_t  *conf = child;
 
     ngx_conf_merge_ptr_value(conf->tp,
                              prev->tp, NULL);
+#endif
 
     return NGX_CONF_OK;
 }
