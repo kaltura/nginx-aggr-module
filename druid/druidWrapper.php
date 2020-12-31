@@ -167,14 +167,14 @@ class NginxAggrDruidWrapper
             return array(
                 'type' => 'in',
                 'dim' => $dimMap[$filter->dimension]['input'],
-                'values' => array($filter->value)
+                'values' => array(strval($filter->value))
             );
 
         case 'in':
             return array(
                 'type' => 'in',
                 'dim' => $dimMap[$filter->dimension]['input'],
-                'values' => $filter->values
+                'values' => array_map('strval', $filter->values)
             );
 
         case 'search':
