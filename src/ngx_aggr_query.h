@@ -4,9 +4,9 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
-#include "ngx_json_parser.h"
+#include "ngx_aggr.h"
 #include "ngx_str_table.h"
-
+#include "ngx_json_parser.h"
 
 #define NGX_ISO8601_TIMESTAMP_LEN  (sizeof("1981-06-13T12:00:00Z") - 1)
 
@@ -29,7 +29,7 @@ enum {
 enum {
     ngx_aggr_query_dim_group,
     ngx_aggr_query_dim_select,
-    ngx_aggr_query_dim_filter,
+    ngx_aggr_query_dim_temp,
 
     ngx_aggr_query_dim_types
 };
@@ -41,8 +41,24 @@ enum {
 };
 
 
+typedef enum {
+    ngx_aggr_query_ctx_filter,
+    ngx_aggr_query_ctx_having,
+} ngx_aggr_query_ctx_e;
+
+
 typedef struct {
-    ngx_str_t                  name;        /* must be first */
+    ngx_str_t                  input;
+    ngx_str_t                  output;
+    ngx_int_t                  type;
+    ngx_str_t                  default_value;
+    ngx_flag_t                 lower;
+    ngx_uint_t                 index;
+} ngx_aggr_query_dim_t;
+
+
+typedef struct {
+    ngx_str_t                  name;
     ngx_flag_t                 lower;
     ngx_uint_t                 offset;
     ngx_uint_t                 temp_offset;
@@ -60,7 +76,13 @@ typedef struct {
 
 
 typedef struct {
-    ngx_str_t                  name;        /* must be first */
+    ngx_aggr_complex_value_t   value;
+    ngx_uint_t                 temp_offset;
+} ngx_aggr_query_dim_complex_t;
+
+
+typedef struct {
+    ngx_str_t                  name;
     ngx_uint_t                 offset;
     ngx_int_t                  type;
 
@@ -75,10 +97,7 @@ typedef struct {
 } ngx_aggr_query_metric_out_t;
 
 
-typedef struct ngx_aggr_filter_ctx_s  ngx_aggr_filter_ctx_t;
-
-
-typedef ngx_flag_t(*ngx_aggr_query_filter_pt)(ngx_aggr_filter_ctx_t *ctx,
+typedef ngx_flag_t(*ngx_aggr_query_filter_pt)(ngx_aggr_result_t *ar,
     void *data);
 
 
@@ -114,12 +133,13 @@ typedef struct {
 } ngx_aggr_query_filter_compare_t;
 
 
-typedef struct {
+struct ngx_aggr_query_s {
     ngx_int_t                  fmt;
     ngx_str_t                  time_dim;
     time_t                     granularity;
     ngx_array_t                dims_in;      /* ngx_aggr_query_dim_in_t */
     ngx_array_t                metrics_in;   /* ngx_aggr_query_metric_in_t */
+    ngx_array_t                dims_complex; /* ngx_aggr_query_dim_complex_t */
     ngx_array_t                dims_out;     /* ngx_aggr_query_dim_out_t */
     ngx_array_t                metrics_out;  /* ngx_aggr_query_metric_out_t */
     ngx_aggr_query_filter_t    filter;
@@ -128,8 +148,10 @@ typedef struct {
     ngx_uint_t                 top_count;
     ngx_flag_t                 top_inverted;
 
-    ngx_uint_t                 hash_max_size;
-    ngx_uint_t                 hash_bucket_size;
+    ngx_uint_t                 dims_hash_max_size;
+    ngx_uint_t                 dims_hash_bucket_size;
+    ngx_uint_t                 metrics_hash_max_size;
+    ngx_uint_t                 metrics_hash_bucket_size;
     size_t                     max_event_size;
     size_t                     output_buf_size;
 
@@ -144,7 +166,33 @@ typedef struct {
     u_char                    *metrics_default; /* double[] */
 
     size_t                     write_size[ngx_aggr_query_fmts];
-} ngx_aggr_query_t;
+
+    ngx_hash_t                 variables_hash;
+
+    ngx_array_t                variables;         /* ngx_aggr_variable_t */
+    ngx_array_t                prefix_variables;  /* ngx_aggr_variable_t */
+    ngx_uint_t                 ncaptures;
+
+    ngx_uint_t                 variables_hash_max_size;
+    ngx_uint_t                 variables_hash_bucket_size;
+
+    ngx_hash_keys_arrays_t    *variables_keys;
+};
+
+
+struct ngx_aggr_query_init_s {
+    ngx_pool_t                *pool;
+    ngx_pool_t                *temp_pool;
+    ngx_aggr_query_t          *query;
+
+    ngx_array_t                dim_hash_keys;     /* ngx_hash_key_t */
+    ngx_array_t                metric_hash_keys;  /* ngx_hash_key_t */
+
+    ngx_aggr_query_ctx_e       ctx;
+    ngx_array_t                dim_temp_offs;     /* ngx_uint_t * */
+    ngx_array_t                metric_offs;       /* ngx_uint_t * */
+    ngx_uint_t                 top_index;
+};
 
 
 ngx_int_t ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
@@ -152,5 +200,11 @@ ngx_int_t ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
 
 ngx_aggr_query_t *ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t init);
 
+
+ngx_aggr_query_dim_in_t *ngx_aggr_query_dim_input_get_simple(
+    ngx_aggr_query_init_t *init, ngx_aggr_query_dim_t *dim);
+
+
+extern ngx_module_t  ngx_aggr_query_module;
 
 #endif /* _NGX_AGGR_QUERY_H_INCLUDED_ */

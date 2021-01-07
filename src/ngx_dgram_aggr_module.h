@@ -4,7 +4,7 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
-#include "ngx_aggr_query.h"
+#include "ngx_aggr.h"
 
 
 ngx_chain_t **ngx_dgram_aggr_query(ngx_pool_t *pool, ngx_cycle_t *cycle,

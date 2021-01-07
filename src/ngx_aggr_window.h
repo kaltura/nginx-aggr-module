@@ -4,7 +4,7 @@
 
 #include <ngx_config.h>
 #include <ngx_core.h>
-#include "ngx_aggr_result.h"
+#include "ngx_aggr.h"
 
 
 typedef struct ngx_aggr_buf_s  ngx_aggr_buf_t;

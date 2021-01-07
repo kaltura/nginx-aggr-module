@@ -304,7 +304,7 @@ Adds a dimension to group by/select.
 
 The following optional parameters can be specified:
 * `type` - sets the type of the dimension - `time`/`group`/`select`, the default is `group`.
-* `input` - sets the name of the key in the input JSON, the default is `output_name`.
+* `input` - sets the name of the key in the input JSON, the default is `output_name`. The parameter value can be a complex expression containing variables (e.g. `$dim_name`).
 * `default` - sets a default value for the dimension, the default will be used if the dimension does not appear in the input JSON.
 * `lower` - if set, the value of the dimension will be lower-cased.
 
@@ -339,6 +339,38 @@ Sets the filter of the query, see [Aggregation filter directives](#aggregation-f
 The filter is applied to all output events post aggregation, events that don't match the filter are not included in the output.
 If multiple filters are defined inside the block, they are combined with AND.
 
+#### map
+* **syntax**: `map string $variable { ... }`
+* **default**: `-`
+* **context**: `query`
+
+Similar to nginx's builtin `map` directive - creates a new variable whose value depends on the complex expression specified in the first parameter.
+* Parameters inside the `map` block specify a mapping between source and resulting values.
+* Source values are specified as strings or regular expressions.
+* Strings are matched while ignoring the case.
+* A regular expression should either start with `"~"` for case-sensitive matching, or with `"~*"` for case-insensitive matching.
+* A regular expression can contain named and positional captures that can later be used in other directives along with the resulting variable.
+* The resulting value can contain text, variables, and their combination.
+
+The following special parameters are also supported:
+* `default` value - sets the resulting value if the source value doesn't match matches any of the specified variants. When default is not specified, the default resulting value will be an empty string.
+
+If a source value matches one of the names of special parameters described above, it should be prefixed with the `"\"` symbol.
+
+#### map_hash_max_size
+* **syntax**: `map_hash_max_size size;`
+* **default**: `2048`
+* **context**: `query`
+
+Sets the maximum size of the map hash table.
+
+#### map_hash_bucket_size
+* **syntax**: `map_hash_bucket_size size;`
+* **default**: `32|64|128`
+* **context**: `query`
+
+Sets the bucket size for the map hash table. The default value depends on the processor’s cache line size.
+
 #### format
 * **syntax**: `format json|prom;`
 * **default**: `-`
@@ -353,19 +385,33 @@ Sets the output format of the result, the default is `json`.
 
 Sets the time granularity of the query, relevant only in output blocks (e.g. `aggr_output_kafka`).
 
-#### hash_max_size
-* **syntax**: `hash_max_size size;`
+#### dims_hash_max_size
+* **syntax**: `dims_hash_max_size size;`
 * **default**: `512`
 * **context**: `query`
 
-Sets the maximum size of the dimensions/metrics hash table.
+Sets the maximum size of the dimensions hash table.
 
-#### hash_bucket_size
-* **syntax**: `hash_bucket_size size;`
+#### dims_hash_bucket_size
+* **syntax**: `dims_hash_bucket_size size;`
 * **default**: `64`
 * **context**: `query`
 
-Sets the bucket size for the dimensions/metrics hash table.
+Sets the bucket size for the dimensions hash table.
+
+#### metrics_hash_max_size
+* **syntax**: `metrics_hash_max_size size;`
+* **default**: `512`
+* **context**: `query`
+
+Sets the maximum size of the metrics hash table.
+
+#### metrics_hash_bucket_size
+* **syntax**: `metrics_hash_bucket_size size;`
+* **default**: `64`
+* **context**: `query`
+
+Sets the bucket size for the metrics hash table.
 
 #### max_event_size
 * **syntax**: `max_event_size size;`
@@ -389,18 +435,21 @@ Sets the size of the buffers allocated for holding the result set.
 * **context**: `filter`
 
 Checks whether the value of an input dimension is in the provided list of values.
+The dim parameter can be a complex expression containing variables (e.g. `$dim_name`).
 
 #### contains
 * **syntax**: `contains dim [case_sensitive=on|off] value1 [value2 ...];`
 * **context**: `filter`
 
 Checks whether any of the provided values is contained in the value of an input dimension.
+The dim parameter can be a complex expression containing variables (e.g. `$dim_name`).
 
 #### regex
 * **syntax**: `regex dim [case_sensitive=on|off] pattern;`
 * **context**: `filter`
 
 Checks whether the value of an input dimension matches the provided regular expression pattern.
+The dim parameter can be a complex expression containing variables (e.g. `$dim_name`).
 
 #### gt
 * **syntax**: `gt metric value;`
@@ -512,7 +561,7 @@ The keys hold the output name of the dimension, the values hold the dimension pr
 
 The following optional properties can be specified:
 * `type` - string, sets the type of the dimension - `time`/`group`/`select`, the default is `group`.
-* `input` - string, sets the name of the key in the input JSON, the default is `output_name`.
+* `input` - string, sets the name of the key in the input JSON, the default is `output_name`. The property value can be a complex expression containing variables (e.g. `$dim_name`).
 * `default` - string, sets a default value for the dimension, the default will be used if the dimension does not appear in the input JSON.
 * `lower` - boolean, if set to `true`, the value of the dimension will be lower-cased.
 
@@ -552,7 +601,7 @@ Checks whether the value of an input dimension is in the provided string array.
 
 The following properties are required:
 * `type` - string, must be `"in"`.
-* `dim` - string, the name of the dimension key in the event JSON.
+* `dim` - string, the name of the dimension key in the event JSON. The dim value can be a complex expression containing variables (e.g. `$dim_name`).
 * `values` - string array, the list of values to compare against.
 
 The following optional properties are defined:
@@ -564,7 +613,7 @@ Checks whether any of the provided strings is contained in the value of an input
 
 The following properties are required:
 * `type` - string, must be `"contains"`.
-* `dim` - string, the name of the dimension key in the event JSON.
+* `dim` - string, the name of the dimension key in the event JSON. The dim value can be a complex expression containing variables (e.g. `$dim_name`).
 * `values` - string array, the list of substrings to search for.
 
 The following optional properties are defined:
@@ -576,7 +625,7 @@ Checks whether the value of an input dimension matches a provided regular expres
 
 The following properties are required:
 * `type` - string, must be `"regex"`.
-* `dim` - string, the name of the dimension key in the event JSON.
+* `dim` - string, the name of the dimension key in the event JSON. The dim value can be a complex expression containing variables (e.g. `$dim_name`).
 * `pattern` - string, a PCRE regular expression pattern.
 
 The following optional properties are defined:
@@ -621,6 +670,12 @@ Applies a logical NOT to the result of another filter.
 The following properties are required:
 * `type` - string, must be `"not"`.
 * `filter` - object, a filter object.
+
+
+## Embedded Variables
+
+The following built-in variables are available for use in `query` context -
+* `dim_name` - arbitrary dimension, the last part of the variable name is the name of the dimension in the input JSON.
 
 
 ## Copyright & License
