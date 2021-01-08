@@ -2,7 +2,7 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include "ngx_json_parser.h"
-#include "ngx_aggr_result.h"
+#include "ngx_aggr.h"
 #include "ngx_dgram_aggr_module.h"
 
 

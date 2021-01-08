@@ -4,7 +4,7 @@
 #if (NGX_HAVE_LIBRDKAFKA)
 #include "ngx_kafka_producer.h"
 #endif
-#include "ngx_aggr_result.h"
+#include "ngx_aggr.h"
 #include "ngx_aggr_window.h"
 #include "ngx_aggr_output.h"
 

@@ -2,7 +2,6 @@
 #include <ngx_core.h>
 #include "ngx_dgram.h"
 #include "ngx_dgram_aggr_module.h"
-#include "ngx_aggr_result.h"
 #include "ngx_aggr_window.h"
 #include "ngx_aggr_output.h"
 
