@@ -82,6 +82,15 @@ typedef struct {
 
 
 typedef struct {
+    ngx_str_t                  input;
+    ngx_str_t                  output;
+    ngx_int_t                  type;
+    double                     default_value;
+    ngx_uint_t                 index;
+} ngx_aggr_query_metric_t;
+
+
+typedef struct {
     ngx_str_t                  name;
     ngx_uint_t                 offset;
     ngx_int_t                  type;
@@ -97,42 +106,6 @@ typedef struct {
 } ngx_aggr_query_metric_out_t;
 
 
-typedef ngx_flag_t(*ngx_aggr_query_filter_pt)(ngx_aggr_result_t *ar,
-    void *data);
-
-
-typedef struct {
-    ngx_aggr_query_filter_pt   handler;
-    void                      *data;
-} ngx_aggr_query_filter_t;
-
-
-typedef struct {
-    ngx_array_t                filters;
-} ngx_aggr_query_filter_group_t;
-
-
-typedef struct {
-    ngx_uint_t                 temp_offset;
-    ngx_str_hash_t            *values;
-    ngx_uint_t                 values_len;
-} ngx_aggr_query_filter_match_t;
-
-
-#if (NGX_PCRE)
-typedef struct {
-    ngx_uint_t                 temp_offset;
-    ngx_regex_t               *re;
-} ngx_aggr_query_filter_regex_t;
-#endif
-
-
-typedef struct {
-    ngx_uint_t                 offset;
-    double                     value;
-} ngx_aggr_query_filter_compare_t;
-
-
 struct ngx_aggr_query_s {
     ngx_int_t                  fmt;
     ngx_str_t                  time_dim;
@@ -142,8 +115,8 @@ struct ngx_aggr_query_s {
     ngx_array_t                dims_complex; /* ngx_aggr_query_dim_complex_t */
     ngx_array_t                dims_out;     /* ngx_aggr_query_dim_out_t */
     ngx_array_t                metrics_out;  /* ngx_aggr_query_metric_out_t */
-    ngx_aggr_query_filter_t    filter;
-    ngx_aggr_query_filter_t    having;
+    ngx_aggr_filter_t          filter;
+    ngx_aggr_filter_t          having;
     ngx_uint_t                 top_offset;
     ngx_uint_t                 top_count;
     ngx_flag_t                 top_inverted;
@@ -203,6 +176,16 @@ ngx_aggr_query_t *ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t init);
 
 ngx_aggr_query_dim_in_t *ngx_aggr_query_dim_input_get_simple(
     ngx_aggr_query_init_t *init, ngx_aggr_query_dim_t *dim);
+
+ngx_aggr_query_dim_in_t *ngx_aggr_query_dim_input_get_complex(
+    ngx_aggr_query_init_t *init, ngx_aggr_query_dim_t *dim);
+
+
+ngx_aggr_query_metric_in_t *ngx_aggr_query_metric_input_get(
+    ngx_aggr_query_init_t *init, ngx_aggr_query_metric_t *metric);
+
+ngx_aggr_query_metric_out_t *ngx_aggr_query_metric_output_get(
+    ngx_aggr_query_t *query, ngx_str_t *name);
 
 
 extern ngx_module_t  ngx_aggr_query_module;

@@ -8,7 +8,20 @@
 #include "ngx_str_table.h"
 
 
-typedef struct ngx_aggr_event_s  ngx_aggr_event_t;
+struct ngx_aggr_event_s {
+    ngx_rbtree_node_t           node;
+    ngx_aggr_event_t           *next;
+    size_t                      group_size;
+    u_char                      data[1];
+
+    /*
+      data =
+    ngx_str_t                  *group_dims[group_size / sizeof(void *)];
+    ngx_str_t                  *select_dims[select_size / sizeof(void *)];
+    double                      metrics[...];
+    */
+};
+
 
 struct ngx_aggr_result_s {
     ngx_pool_t                 *pool;
@@ -48,30 +61,6 @@ struct ngx_aggr_result_s {
 
 typedef void (*ngx_aggr_event_send_pt)(void *data, void *buf, size_t len,
     void *free_ctx);
-
-
-ngx_flag_t ngx_aggr_filter_in(ngx_aggr_result_t *ar, void *data);
-
-ngx_flag_t ngx_aggr_filter_contains(ngx_aggr_result_t *ar, void *data);
-
-#if (NGX_PCRE)
-ngx_flag_t ngx_aggr_filter_regex(ngx_aggr_result_t *ar, void *data);
-#endif
-
-ngx_flag_t ngx_aggr_filter_and(ngx_aggr_result_t *ar, void *data);
-
-ngx_flag_t ngx_aggr_filter_or(ngx_aggr_result_t *ar, void *data);
-
-ngx_flag_t ngx_aggr_filter_not(ngx_aggr_result_t *ar, void *data);
-
-
-ngx_flag_t ngx_aggr_filter_gt(ngx_aggr_result_t *ar, void *data);
-
-ngx_flag_t ngx_aggr_filter_lt(ngx_aggr_result_t *ar, void *data);
-
-ngx_flag_t ngx_aggr_filter_gte(ngx_aggr_result_t *ar, void *data);
-
-ngx_flag_t ngx_aggr_filter_lte(ngx_aggr_result_t *ar, void *data);
 
 
 ngx_aggr_result_t *ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
