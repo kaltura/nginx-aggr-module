@@ -542,18 +542,17 @@ ngx_aggr_map_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
 
 static ngx_int_t
-ngx_aggr_map_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj)
+ngx_aggr_map_json(ngx_aggr_query_init_t *init, ngx_str_t *output,
+    ngx_json_object_t *obj)
 {
     ngx_int_t                 rc;
     ngx_uint_t                i, n;
     ngx_str_t                *input;
-    ngx_str_t                *output;
     ngx_json_object_t        *values;
     ngx_json_key_value_t     *elts;
     ngx_aggr_map_conf_ctx_t   ctx;
 
     input = NULL;
-    output = NULL;
     values = NULL;
 
     elts = obj->elts;
@@ -566,10 +565,6 @@ ngx_aggr_map_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj)
         case NGX_JSON_STRING:
             if (ngx_str_equals_c(elts[i].key, "input")) {
                 input = &elts[i].value.v.str;
-                continue;
-
-            } else if (ngx_str_equals_c(elts[i].key, "output")) {
-                output = &elts[i].value.v.str;
                 continue;
             }
             break;
@@ -591,12 +586,6 @@ ngx_aggr_map_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj)
     if (input == NULL) {
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
             "ngx_aggr_map_json: missing \"input\" key");
-        return NGX_BAD_QUERY;
-    }
-
-    if (output == NULL) {
-        ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-            "ngx_aggr_map_json: missing \"output\" key");
         return NGX_BAD_QUERY;
     }
 
@@ -637,26 +626,23 @@ ngx_aggr_map_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj)
 
 
 ngx_int_t
-ngx_aggr_maps_json(ngx_aggr_query_init_t *init, ngx_json_array_t *arr)
+ngx_aggr_maps_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj)
 {
-    ngx_int_t           rc;
-    ngx_array_part_t   *part;
-    ngx_json_object_t  *obj;
+    ngx_int_t              rc;
+    ngx_uint_t             i, n;
+    ngx_json_key_value_t  *elts;
 
-    part = &arr->part;
+    elts = obj->elts;
+    n = obj->nelts;
 
-    for (obj = part->first; ; obj++) {
-
-        if ((void *) obj >= part->last) {
-            if (part->next == NULL) {
-                break;
-            }
-
-            part = part->next;
-            obj = part->first;
+    for (i = 0; i < n; i++) {
+        if (elts[i].value.type != NGX_JSON_OBJECT) {
+            ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
+                "ngx_aggr_maps_json: invalid map object type");
+            return NGX_BAD_QUERY;
         }
 
-        rc = ngx_aggr_map_json(init, obj);
+        rc = ngx_aggr_map_json(init, &elts[i].key, &elts[i].value.v.obj);
         if (rc != NGX_OK) {
             return rc;
         }

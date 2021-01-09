@@ -9,6 +9,6 @@
 
 
 ngx_int_t ngx_aggr_maps_json(ngx_aggr_query_init_t *init,
-    ngx_json_array_t *arr);
+    ngx_json_object_t *obj);
 
 #endif /* _NGX_AGGR_MAP_H_INCLUDED_ */
