@@ -81,6 +81,129 @@ static ngx_json_type_t  ngx_json_number = {
     NGX_JSON_NUMBER, sizeof(double), ngx_json_parser_number
 };
 
+
+static u_char*
+ngx_json_unicode_hex_to_utf8(u_char *dest, u_char *src)
+{
+    ngx_int_t  ch;
+
+    ch = ngx_hextoi(src, 4);
+    if (ch < 0) {
+        return NULL;
+    }
+
+    if (ch < 0x80) {
+        *dest++ = (u_char) ch;
+
+    } else if (ch < 0x800) {
+        *dest++ = (ch >> 6) | 0xc0;
+        *dest++ = (ch & 0x3f) | 0x80;
+
+    } else if (ch < 0x10000) {
+        *dest++ = (ch >> 12) | 0xe0;
+        *dest++ = ((ch >> 6) & 0x3f) | 0x80;
+        *dest++ = (ch & 0x3f) | 0x80;
+
+    } else if (ch < 0x110000) {
+        *dest++ = (ch >> 18) | 0xf0;
+        *dest++ = ((ch >> 12) & 0x3f) | 0x80;
+        *dest++ = ((ch >> 6) & 0x3f) | 0x80;
+        *dest++ = (ch & 0x3f) | 0x80;
+
+    } else {
+        return NULL;
+    }
+
+    return dest;
+}
+
+
+static ngx_json_status_t
+ngx_json_decode_string(ngx_json_parser_state_t *state, ngx_str_t *str)
+{
+    u_char  *end;
+    u_char  *src;
+    u_char  *p = str->data;
+
+    src = str->data;
+    end = src + str->len;
+    for (; src < end; src++) {
+
+        if (*src != '\\') {
+            *p++ = *src;
+            continue;
+        }
+
+        src++;
+        if (src >= end) {
+            ngx_snprintf(state->error, state->error_size,
+                "slash at end of string%Z");
+            return NGX_JSON_BAD_DATA;
+        }
+
+        switch (*src) {
+
+        case '"':
+            *p++ = '"';
+            break;
+
+        case '\\':
+            *p++ = '\\';
+            break;
+
+        case '/':
+            *p++ = '/';
+            break;
+
+        case 'b':
+            *p++ = '\b';
+            break;
+
+        case 'f':
+            *p++ = '\f';
+            break;
+
+        case 'n':
+            *p++ = '\n';
+            break;
+
+        case 'r':
+            *p++ = '\r';
+            break;
+
+        case 't':
+            *p++ = '\t';
+            break;
+
+        case 'u':
+            if (src + 5 > end) {
+                ngx_snprintf(state->error, state->error_size,
+                    "not enough chars for \\u escape%Z");
+                return NGX_JSON_BAD_DATA;
+            }
+
+            p = ngx_json_unicode_hex_to_utf8(p, src + 1);
+            if (p == NULL) {
+                ngx_snprintf(state->error, state->error_size,
+                    "failed to decode \"%*s\"%Z", (size_t) 6, src - 1);
+                return NGX_JSON_BAD_DATA;
+            }
+            src += 4;
+            break;
+
+        default:
+            ngx_snprintf(state->error, state->error_size,
+                "invalid escape char \"%c\"%Z", *src);
+            return NGX_JSON_BAD_DATA;
+        }
+    }
+
+    str->len = p - str->data;
+
+    return NGX_OK;
+}
+
+
 static ngx_json_status_t
 ngx_json_get_value_type(ngx_json_parser_state_t *state,
     ngx_json_type_t **result)
@@ -123,10 +246,12 @@ ngx_json_skip_spaces(ngx_json_parser_state_t *state)
 static ngx_json_status_t
 ngx_json_parse_string(ngx_json_parser_state_t *state, ngx_str_t *result)
 {
-    u_char  c;
+    u_char      c;
+    ngx_flag_t  decode;
 
     state->cur_pos++;       /* skip the " */
 
+    decode = 0;
     result->data = state->cur_pos;
 
     for ( ;; ) {
@@ -145,11 +270,17 @@ ngx_json_parse_string(ngx_json_parser_state_t *state, ngx_str_t *result)
                     "end of data while parsing string (1)%Z");
                 return NGX_JSON_BAD_DATA;
             }
+            decode = 1;
             break;
 
         case '"':
             result->len = state->cur_pos - result->data;
             state->cur_pos++;
+
+            if (decode) {
+                return ngx_json_decode_string(state, result);
+            }
+
             return NGX_JSON_OK;
         }
 
@@ -166,10 +297,12 @@ ngx_json_parse_object_key(ngx_json_parser_state_t *state,
     ngx_json_key_value_t *result)
 {
     u_char      c;
+    ngx_flag_t  decode;
     ngx_uint_t  hash = 0;
 
     EXPECT_CHAR(state, '\"');
 
+    decode = 0;
     result->key.data = state->cur_pos;
 
     for ( ;; ) {
@@ -188,12 +321,18 @@ ngx_json_parse_object_key(ngx_json_parser_state_t *state,
                     "end of data while parsing string (1)%Z");
                 return NGX_JSON_BAD_DATA;
             }
+            decode = 1;
             break;
 
         case '"':
             result->key.len = state->cur_pos - result->key.data;
             result->key_hash = hash;
             state->cur_pos++;
+
+            if (decode) {
+                return ngx_json_decode_string(state, &result->key);
+            }
+
             return NGX_JSON_OK;
         }
 
@@ -610,116 +749,4 @@ error:
 
     error[error_size - 1] = '\0';   /* make sure it's null terminated */
     return rc;
-}
-
-static u_char*
-ngx_json_unicode_hex_to_utf8(u_char *dest, u_char *src)
-{
-    ngx_int_t  ch;
-
-    ch = ngx_hextoi(src, 4);
-    if (ch < 0) {
-        return NULL;
-    }
-
-    if (ch < 0x80) {
-        *dest++ = (u_char) ch;
-
-    } else if (ch < 0x800) {
-        *dest++ = (ch >> 6) | 0xC0;
-        *dest++ = (ch & 0x3F) | 0x80;
-
-    } else if (ch < 0x10000) {
-        *dest++ = (ch >> 12) | 0xE0;
-        *dest++ = ((ch >> 6) & 0x3F) | 0x80;
-        *dest++ = (ch & 0x3F) | 0x80;
-
-    } else if (ch < 0x110000) {
-        *dest++ = (ch >> 18) | 0xF0;
-        *dest++ = ((ch >> 12) & 0x3F) | 0x80;
-        *dest++ = ((ch >> 6) & 0x3F) | 0x80;
-        *dest++ = (ch & 0x3F) | 0x80;
-
-    } else {
-        return NULL;
-    }
-
-    return dest;
-}
-
-ngx_json_status_t
-ngx_json_decode_string(ngx_str_t *dest, ngx_str_t *src)
-{
-    u_char  *end_pos;
-    u_char  *cur_pos;
-    u_char  *p = dest->data + dest->len;
-
-    cur_pos = src->data;
-    end_pos = cur_pos + src->len;
-    for (; cur_pos < end_pos; cur_pos++) {
-
-        if (*cur_pos != '\\') {
-            *p++ = *cur_pos;
-            continue;
-        }
-
-        cur_pos++;
-        if (cur_pos >= end_pos) {
-            return NGX_JSON_BAD_DATA;
-        }
-
-        switch (*cur_pos) {
-
-        case '"':
-            *p++ = '"';
-            break;
-
-        case '\\':
-            *p++ = '\\';
-            break;
-
-        case '/':
-            *p++ = '/';
-            break;
-
-        case 'b':
-            *p++ = '\b';
-            break;
-
-        case 'f':
-            *p++ = '\f';
-            break;
-
-        case 'n':
-            *p++ = '\n';
-            break;
-
-        case 'r':
-            *p++ = '\r';
-            break;
-
-        case 't':
-            *p++ = '\t';
-            break;
-
-        case 'u':
-            if (cur_pos + 5 > end_pos) {
-                return NGX_JSON_BAD_DATA;
-            }
-
-            p = ngx_json_unicode_hex_to_utf8(p, cur_pos + 1);
-            if (p == NULL) {
-                return NGX_JSON_BAD_DATA;
-            }
-            cur_pos += 4;
-            break;
-
-        default:
-            return NGX_JSON_BAD_DATA;
-        }
-    }
-
-    dest->len = p - dest->data;
-
-    return NGX_OK;
 }

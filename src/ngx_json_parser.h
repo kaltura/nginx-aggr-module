@@ -61,7 +61,4 @@ typedef struct {
 ngx_json_status_t ngx_json_parse(ngx_pool_t *pool, u_char *string,
     ngx_json_value_t *result, u_char *error, size_t error_size);
 
-ngx_json_status_t ngx_json_decode_string(ngx_str_t *dest, ngx_str_t *src);
-
-
 #endif /*_NGX_JSON_PARSER_H_INCLUDED_ */
