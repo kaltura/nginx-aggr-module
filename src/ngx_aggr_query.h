@@ -154,9 +154,12 @@ struct ngx_aggr_query_s {
 
 
 struct ngx_aggr_query_init_s {
+    ngx_cycle_t               *cycle;
     ngx_pool_t                *pool;
     ngx_pool_t                *temp_pool;
-    ngx_aggr_query_t          *query;
+
+    void                     **main_conf;
+    void                     **filter_conf;
 
     ngx_array_t                dim_hash_keys;     /* ngx_hash_key_t */
     ngx_array_t                metric_hash_keys;  /* ngx_hash_key_t */

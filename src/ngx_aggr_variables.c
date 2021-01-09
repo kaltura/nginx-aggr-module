@@ -53,7 +53,7 @@ ngx_aggr_add_variable(ngx_aggr_query_init_t *init, ngx_str_t *name,
         return ngx_aggr_add_prefix_variable(init, name, flags);
     }
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     key = query->variables_keys->keys.elts;
     for (i = 0; i < query->variables_keys->keys.nelts; i++) {
@@ -122,7 +122,7 @@ ngx_aggr_add_prefix_variable(ngx_aggr_query_init_t *init, ngx_str_t *name,
     ngx_aggr_query_t     *query;
     ngx_aggr_variable_t  *v;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     v = query->prefix_variables.elts;
     for (i = 0; i < query->prefix_variables.nelts; i++) {
@@ -184,7 +184,7 @@ ngx_aggr_get_variable_index(ngx_aggr_query_init_t *init, ngx_str_t *name)
         return NGX_ERROR;
     }
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     v = query->variables.elts;
 
@@ -458,7 +458,7 @@ ngx_aggr_regex_compile(ngx_aggr_query_init_t *init, ngx_regex_compile_t *rc)
     re->ncaptures = rc->captures;
     re->name = rc->pattern;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
     query->ncaptures = ngx_max(query->ncaptures, re->ncaptures);
 
     n = (ngx_uint_t) rc->named_captures;
@@ -568,7 +568,7 @@ ngx_aggr_variables_add_core_vars(ngx_aggr_query_init_t *init)
     ngx_aggr_query_t     *query;
     ngx_aggr_variable_t  *cv, *v;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     query->variables_keys = ngx_pcalloc(init->temp_pool,
                                         sizeof(ngx_hash_keys_arrays_t));
@@ -617,7 +617,7 @@ ngx_aggr_variables_init_vars(ngx_aggr_query_init_t *init)
 
     /* set the handlers for the indexed aggr variables */
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     v = query->variables.elts;
     pv = query->prefix_variables.elts;

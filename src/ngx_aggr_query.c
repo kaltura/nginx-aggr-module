@@ -1,7 +1,12 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include "ngx_aggr.h"
+#include "ngx_aggr_map.h"
 
+
+static void *ngx_aggr_query_create(ngx_aggr_query_init_t *init);
+
+static ngx_int_t ngx_aggr_query_init(ngx_aggr_query_init_t *init, void *conf);
 
 static char *ngx_aggr_query_dim_conf(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
@@ -122,8 +127,8 @@ static ngx_command_t  ngx_aggr_query_commands[] = {
 
 
 static ngx_aggr_module_t  ngx_aggr_query_module_ctx = {
-    NULL,                                  /* create main configuration */
-    NULL                                   /* init main configuration */
+    ngx_aggr_query_create,                 /* create main configuration */
+    ngx_aggr_query_init                    /* init main configuration */
 };
 
 
@@ -159,7 +164,7 @@ static ngx_str_t  ngx_aggr_query_metric_type_names[] = {
 };
 
 
-static ngx_uint_t  ngx_aggr_max_module;
+static ngx_uint_t  ngx_aggr_max_module = 0;
 
 
 /* a copy of ngx_hash_init with ngx_strlow replaced by ngx_memcpy */
@@ -517,7 +522,7 @@ ngx_aggr_query_dim_input_get_simple(ngx_aggr_query_init_t *init,
     ngx_aggr_query_t         *query;
     ngx_aggr_query_dim_in_t  *input;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     input = ngx_aggr_query_dim_input_get(query, dim);
     if (input != NULL) {
@@ -553,7 +558,7 @@ ngx_aggr_query_dim_input_get_complex(ngx_aggr_query_init_t *init,
         return ngx_aggr_query_dim_input_get_simple(init, dim);
     }
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     input = ngx_aggr_query_dim_input_get(query, dim);
     if (input != NULL) {
@@ -593,7 +598,7 @@ ngx_aggr_query_dim_push(ngx_aggr_query_init_t *init, ngx_aggr_query_dim_t *dim)
     ngx_aggr_query_dim_in_t   *input;
     ngx_aggr_query_dim_out_t  *output;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     input = ngx_aggr_query_dim_input_get_complex(init, dim);
     if (input == NULL) {
@@ -679,7 +684,7 @@ ngx_aggr_query_dim_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
 
 
-    init = cf->handler_conf;
+    init = cf->ctx;
     if (ngx_aggr_query_dim_push(init, &dim) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
@@ -697,7 +702,7 @@ ngx_aggr_query_dim_json(ngx_aggr_query_init_t *init, ngx_str_t *name,
     ngx_json_key_value_t  *elts;
     ngx_aggr_query_dim_t   dim;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     elts = attrs->elts;
     n = attrs->nelts;
@@ -904,7 +909,7 @@ ngx_aggr_query_metric_input_get(ngx_aggr_query_init_t *init,
     ngx_aggr_query_t            *query;
     ngx_aggr_query_metric_in_t  *input;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     input = query->metrics_in.elts;
     n = query->metrics_in.nelts;
@@ -961,15 +966,18 @@ static ngx_int_t
 ngx_aggr_query_metric_push(ngx_aggr_query_init_t *init,
     ngx_aggr_query_metric_t *metric)
 {
+    ngx_aggr_query_t             *query;
     ngx_aggr_query_metric_in_t   *input;
     ngx_aggr_query_metric_out_t  *output;
+
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     input = ngx_aggr_query_metric_input_get(init, metric);
     if (input == NULL) {
         return NGX_ERROR;
     }
 
-    output = ngx_array_push(&init->query->metrics_out);
+    output = ngx_array_push(&query->metrics_out);
     if (output == NULL) {
         return NGX_ERROR;
     }
@@ -1034,7 +1042,7 @@ ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
 
-    init = cf->handler_conf;
+    init = cf->ctx;
     if (ngx_aggr_query_metric_push(init, &metric) != NGX_OK) {
         return NGX_CONF_ERROR;
     }
@@ -1103,7 +1111,7 @@ ngx_aggr_query_metric_json(ngx_aggr_query_init_t *init, ngx_str_t *name,
     }
 
     if (top != 0) {
-        query = init->query;
+        query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
         if (query->top_count > 0) {
             ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
@@ -1192,7 +1200,7 @@ ngx_aggr_query_metrics_set_out_offsets(ngx_aggr_query_init_t *init)
     ngx_aggr_query_metric_in_t   *input;
     ngx_aggr_query_metric_out_t  *output;
 
-    query = init->query;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
     input = query->metrics_in.elts;
 
     output = query->metrics_out.elts;
@@ -1287,36 +1295,37 @@ ngx_aggr_query_prom_base_size(ngx_aggr_query_t *query)
 
 
 static ngx_int_t
-ngx_aggr_query_init(ngx_aggr_query_init_t *init, ngx_pool_t *temp_pool)
+ngx_aggr_query_postconfiguration(ngx_aggr_query_init_t *init,
+    ngx_pool_t *temp_pool)
 {
-    ngx_hash_init_t    hash;
-    ngx_aggr_query_t  *query;
+    ngx_uint_t          m, mi;
+    ngx_cycle_t        *cycle;
+    ngx_hash_init_t     hash;
+    ngx_aggr_query_t   *query;
+    ngx_aggr_module_t  *module;
 
-    query = init->query;
+    cycle = init->cycle;
 
-    ngx_conf_init_value(query->fmt, ngx_aggr_query_fmt_json);
-    ngx_conf_init_value(query->granularity, 30);
+    for (m = 0; cycle->modules[m]; m++) {
+        if (cycle->modules[m]->type != NGX_AGGR_MODULE) {
+            continue;
+        }
 
-    ngx_conf_init_uint_value(query->dims_hash_max_size, 512);
-    ngx_conf_init_uint_value(query->dims_hash_bucket_size, 64);
-    ngx_conf_init_uint_value(query->metrics_hash_max_size, 512);
-    ngx_conf_init_uint_value(query->metrics_hash_bucket_size, 64);
-    ngx_conf_init_size_value(query->max_event_size, 2048);
-    ngx_conf_init_size_value(query->output_buf_size, 65536);
+        module = cycle->modules[m]->ctx;
+        mi = cycle->modules[m]->ctx_index;
 
-    ngx_conf_init_uint_value(query->variables_hash_max_size, 1024);
-    ngx_conf_init_uint_value(query->variables_hash_bucket_size, 64);
-
-    query->variables_hash_bucket_size =
-              ngx_align(query->variables_hash_bucket_size, ngx_cacheline_size);
-
-    if (query->ncaptures) {
-        query->ncaptures = (query->ncaptures + 1) * 3;
+        if (module->init_main_conf) {
+            if (module->init_main_conf(init, init->main_conf[mi]) != NGX_OK) {
+                return NGX_ERROR;
+            }
+        }
     }
 
     if (ngx_aggr_variables_init_vars(init) != NGX_OK) {
         return NGX_ERROR;
     }
+
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
 
     hash.key = ngx_hash_key;
     hash.pool = init->pool;
@@ -1382,10 +1391,100 @@ ngx_aggr_query_init(ngx_aggr_query_init_t *init, ngx_pool_t *temp_pool)
 }
 
 
-static ngx_int_t
+static void *
 ngx_aggr_query_create(ngx_aggr_query_init_t *init)
 {
     ngx_aggr_query_t  *query;
+
+    query = ngx_pcalloc(init->pool, sizeof(*query));
+    if (query == NULL) {
+        return NULL;
+    }
+
+    if (ngx_array_init(&query->dims_out, init->pool, 4,
+                       sizeof(ngx_aggr_query_dim_out_t))
+        != NGX_OK)
+    {
+        return NULL;
+    }
+
+    if (ngx_array_init(&query->metrics_out, init->pool, 4,
+                       sizeof(ngx_aggr_query_metric_out_t))
+        != NGX_OK)
+    {
+        return NULL;
+    }
+
+    if (ngx_array_init(&query->dims_in, init->pool, 4,
+                       sizeof(ngx_aggr_query_dim_in_t)) != NGX_OK)
+    {
+        return NULL;
+    }
+
+    if (ngx_array_init(&query->metrics_in, init->pool, 4,
+                       sizeof(ngx_aggr_query_metric_in_t)) != NGX_OK)
+    {
+        return NULL;
+    }
+
+    if (ngx_array_init(&query->dims_complex, init->pool, 1,
+                       sizeof(ngx_aggr_query_dim_complex_t)) != NGX_OK)
+    {
+        return NULL;
+    }
+
+    query->fmt = NGX_CONF_UNSET;
+    query->granularity = NGX_CONF_UNSET;
+
+    query->dims_hash_max_size = NGX_CONF_UNSET_UINT;
+    query->dims_hash_bucket_size = NGX_CONF_UNSET_UINT;
+    query->metrics_hash_max_size = NGX_CONF_UNSET_UINT;
+    query->metrics_hash_bucket_size = NGX_CONF_UNSET_UINT;
+    query->variables_hash_max_size = NGX_CONF_UNSET_UINT;
+    query->variables_hash_bucket_size = NGX_CONF_UNSET_UINT;
+    query->max_event_size = NGX_CONF_UNSET_SIZE;
+    query->output_buf_size = NGX_CONF_UNSET_SIZE;
+
+    return query;
+}
+
+
+static ngx_int_t
+ngx_aggr_query_init(ngx_aggr_query_init_t *init, void *conf)
+{
+    ngx_aggr_query_t  *query;
+
+    query = conf;
+
+    ngx_conf_init_value(query->fmt, ngx_aggr_query_fmt_json);
+    ngx_conf_init_value(query->granularity, 30);
+
+    ngx_conf_init_uint_value(query->dims_hash_max_size, 512);
+    ngx_conf_init_uint_value(query->dims_hash_bucket_size, 64);
+    ngx_conf_init_uint_value(query->metrics_hash_max_size, 512);
+    ngx_conf_init_uint_value(query->metrics_hash_bucket_size, 64);
+    ngx_conf_init_size_value(query->max_event_size, 2048);
+    ngx_conf_init_size_value(query->output_buf_size, 65536);
+
+    ngx_conf_init_uint_value(query->variables_hash_max_size, 1024);
+    ngx_conf_init_uint_value(query->variables_hash_bucket_size, 64);
+
+    query->variables_hash_bucket_size =
+              ngx_align(query->variables_hash_bucket_size, ngx_cacheline_size);
+
+    if (query->ncaptures) {
+        query->ncaptures = (query->ncaptures + 1) * 3;
+    }
+
+    return NGX_OK;
+}
+
+static ngx_int_t
+ngx_aggr_query_preconfiguration(ngx_aggr_query_init_t *init)
+{
+    ngx_uint_t          m, mi;
+    ngx_cycle_t        *cycle;
+    ngx_aggr_module_t  *module;
 
     if (ngx_array_init(&init->dim_hash_keys, init->temp_pool, 4,
                        sizeof(ngx_hash_key_t))
@@ -1415,56 +1514,39 @@ ngx_aggr_query_create(ngx_aggr_query_init_t *init)
         return NGX_ERROR;
     }
 
-    query = ngx_pcalloc(init->pool, sizeof(*query));
-    if (query == NULL) {
+    cycle = init->cycle;
+
+    if (!ngx_aggr_max_module) {
+        ngx_aggr_max_module = ngx_count_modules(cycle, NGX_AGGR_MODULE);
+    }
+
+    init->main_conf = ngx_pcalloc(init->temp_pool,
+                                  sizeof(void *) * ngx_aggr_max_module);
+    if (init->main_conf == NULL) {
         return NGX_ERROR;
     }
 
-    if (ngx_array_init(&query->dims_out, init->pool, 4,
-                       sizeof(ngx_aggr_query_dim_out_t))
-        != NGX_OK)
-    {
+    init->filter_conf = ngx_pcalloc(init->temp_pool,
+                                    sizeof(void *) * ngx_aggr_max_module);
+    if (init->filter_conf == NULL) {
         return NGX_ERROR;
     }
 
-    if (ngx_array_init(&query->metrics_out, init->pool, 4,
-                       sizeof(ngx_aggr_query_metric_out_t))
-        != NGX_OK)
-    {
-        return NGX_ERROR;
+    for (m = 0; cycle->modules[m]; m++) {
+        if (cycle->modules[m]->type != NGX_AGGR_MODULE) {
+            continue;
+        }
+
+        module = cycle->modules[m]->ctx;
+        mi = cycle->modules[m]->ctx_index;
+
+        if (module->create_main_conf) {
+            init->main_conf[mi] = module->create_main_conf(init);
+            if (init->main_conf[mi] == NULL) {
+                return NGX_ERROR;
+            }
+        }
     }
-
-    if (ngx_array_init(&query->dims_in, init->pool, 4,
-                       sizeof(ngx_aggr_query_dim_in_t)) != NGX_OK)
-    {
-        return NGX_ERROR;
-    }
-
-    if (ngx_array_init(&query->metrics_in, init->pool, 4,
-                       sizeof(ngx_aggr_query_metric_in_t)) != NGX_OK)
-    {
-        return NGX_ERROR;
-    }
-
-    if (ngx_array_init(&query->dims_complex, init->pool, 1,
-                       sizeof(ngx_aggr_query_dim_complex_t)) != NGX_OK)
-    {
-        return NGX_ERROR;
-    }
-
-    query->fmt = NGX_CONF_UNSET;
-    query->granularity = NGX_CONF_UNSET;
-
-    query->dims_hash_max_size = NGX_CONF_UNSET_UINT;
-    query->dims_hash_bucket_size = NGX_CONF_UNSET_UINT;
-    query->metrics_hash_max_size = NGX_CONF_UNSET_UINT;
-    query->metrics_hash_bucket_size = NGX_CONF_UNSET_UINT;
-    query->variables_hash_max_size = NGX_CONF_UNSET_UINT;
-    query->variables_hash_bucket_size = NGX_CONF_UNSET_UINT;
-    query->max_event_size = NGX_CONF_UNSET_SIZE;
-    query->output_buf_size = NGX_CONF_UNSET_SIZE;
-
-    init->query = query;
 
     if (ngx_aggr_variables_add_core_vars(init) != NGX_OK) {
         return NGX_ERROR;
@@ -1478,61 +1560,26 @@ ngx_aggr_query_t *
 ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t do_init)
 {
     char                   *rv;
-    ngx_uint_t              m, mi;
     ngx_conf_t              save;
     ngx_aggr_query_t       *query;
-    ngx_aggr_module_t      *module;
-    ngx_aggr_conf_ctx_t     ctx;
     ngx_aggr_query_init_t   init;
 
+    init.cycle = cf->cycle;
     init.pool = cf->pool;
     init.temp_pool = cf->temp_pool;
 
-    if (ngx_aggr_query_create(&init) != NGX_OK) {
+    if (ngx_aggr_query_preconfiguration(&init) != NGX_OK) {
         return NULL;
     }
 
-    query = init.query;
-
-    ngx_aggr_max_module = ngx_count_modules(cf->cycle, NGX_AGGR_MODULE);
-
-    ctx.main_conf = ngx_pcalloc(cf->temp_pool,
-                                sizeof(void *) * ngx_aggr_max_module);
-    if (ctx.main_conf == NULL) {
-        return NULL;
-    }
-
-    ctx.filter_conf = ngx_pcalloc(cf->temp_pool,
-                                  sizeof(void *) * ngx_aggr_max_module);
-    if (ctx.filter_conf == NULL) {
-        return NULL;
-    }
-
-    ctx.main_conf[ngx_aggr_query_module.ctx_index] = query;
-
-    for (m = 0; cf->cycle->modules[m]; m++) {
-        if (cf->cycle->modules[m]->type != NGX_AGGR_MODULE) {
-            continue;
-        }
-
-        module = cf->cycle->modules[m]->ctx;
-        mi = cf->cycle->modules[m]->ctx_index;
-
-        if (module->create_main_conf) {
-            ctx.main_conf[mi] = module->create_main_conf(cf);
-            if (ctx.main_conf[mi] == NULL) {
-                return NGX_CONF_ERROR;
-            }
-        }
-    }
+    query = ngx_aggr_get_module_main_conf(&init, ngx_aggr_query_module);
 
     save = *cf;
 
-    cf->ctx = &ctx;
+    cf->ctx = &init;
 
     cf->module_type = NGX_AGGR_MODULE;
     cf->cmd_type = NGX_AGGR_MAIN_CONF;
-    cf->handler_conf = &init;
 
     rv = ngx_conf_parse(cf, NULL);
 
@@ -1545,33 +1592,11 @@ ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t do_init)
         return NULL;
     }
 
+    *cf = save;
+
     if (!do_init) {
-        *cf = save;
         return query;
     }
-
-    for (m = 0; cf->cycle->modules[m]; m++) {
-        if (cf->cycle->modules[m]->type != NGX_AGGR_MODULE) {
-            continue;
-        }
-
-        module = cf->cycle->modules[m]->ctx;
-        mi = cf->cycle->modules[m]->ctx_index;
-
-        if (module->init_main_conf) {
-            rv = module->init_main_conf(cf, ctx.main_conf[mi]);
-            if (rv != NGX_CONF_OK) {
-                if (rv != NGX_CONF_ERROR) {
-                    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "%s", rv);
-                }
-
-                *cf = save;
-                return NULL;
-            }
-        }
-    }
-
-    *cf = save;
 
     if (query->dims_out.nelts <= 0 && query->metrics_out.nelts <= 0) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
@@ -1579,7 +1604,7 @@ ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t do_init)
         return NULL;
     }
 
-    if (ngx_aggr_query_init(&init, cf->temp_pool) != NGX_OK) {
+    if (ngx_aggr_query_postconfiguration(&init, cf->temp_pool) != NGX_OK) {
         return NULL;
     }
 
@@ -1603,14 +1628,15 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
         return NGX_BAD_QUERY;
     }
 
+    init.cycle = (ngx_cycle_t *) ngx_cycle;
     init.pool = pool;
     init.temp_pool = temp_pool;
 
-    if (ngx_aggr_query_create(&init) != NGX_OK) {
+    if (ngx_aggr_query_preconfiguration(&init) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    query = init.query;
+    query = ngx_aggr_get_module_main_conf(&init, ngx_aggr_query_module);
 
     if (base != NULL) {
         query->fmt = base->fmt;
@@ -1664,6 +1690,19 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
             }
 
             break;
+
+        case NGX_JSON_ARRAY:
+            if (ngx_str_equals_c(elts[i].key, "maps") &&
+                elts[i].value.v.arr.type == NGX_JSON_OBJECT)
+            {
+                rc = ngx_aggr_maps_json(&init, &elts[i].value.v.arr);
+                if (rc != NGX_OK) {
+                    return rc;
+                }
+                continue;
+            }
+
+            break;
         }
 
         ngx_log_error(NGX_LOG_ERR, pool->log, 0,
@@ -1678,7 +1717,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
         return NGX_BAD_QUERY;
     }
 
-    if (ngx_aggr_query_init(&init, temp_pool) != NGX_OK) {
+    if (ngx_aggr_query_postconfiguration(&init, temp_pool) != NGX_OK) {
         return NGX_ERROR;
     }
 

@@ -426,6 +426,7 @@ static ngx_int_t
 ngx_aggr_filter_get_metric_offset(ngx_aggr_query_init_t *init,
     ngx_aggr_query_metric_t *metric, ngx_uint_t *offset)
 {
+    ngx_aggr_query_t             *query;
     ngx_aggr_query_metric_in_t   *input;
     ngx_aggr_query_metric_out_t  *output;
 
@@ -441,7 +442,9 @@ ngx_aggr_filter_get_metric_offset(ngx_aggr_query_init_t *init,
         break;
 
     case ngx_aggr_query_ctx_having:
-        output = ngx_aggr_query_metric_output_get(init->query, &metric->input);
+        query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
+
+        output = ngx_aggr_query_metric_output_get(query, &metric->input);
         if (output == NULL) {
             ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
                 "ngx_aggr_filter_get_metric_offset: "
@@ -466,9 +469,11 @@ ngx_aggr_filter_dims_set_offsets(ngx_aggr_query_init_t *init)
     ngx_uint_t                 i, n;
     ngx_uint_t                 index;
     ngx_uint_t               **offp;
+    ngx_aggr_query_t          *query;
     ngx_aggr_query_dim_in_t   *input;
 
-    input = init->query->dims_in.elts;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
+    input = query->dims_in.elts;
 
     offp = init->dim_temp_offs.elts;
     n = init->dim_temp_offs.nelts;
@@ -486,9 +491,11 @@ ngx_aggr_filter_metrics_set_offsets(ngx_aggr_query_init_t *init)
     ngx_uint_t                    i, n;
     ngx_uint_t                    index;
     ngx_uint_t                  **offp;
+    ngx_aggr_query_t             *query;
     ngx_aggr_query_metric_in_t   *input;
 
-    input = init->query->metrics_in.elts;
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
+    input = query->metrics_in.elts;
 
     offp = init->metric_offs.elts;
     n = init->metric_offs.nelts;
@@ -1227,7 +1234,7 @@ ngx_aggr_filter_match_conf(ngx_conf_t *cf, ngx_command_t *cmd,
     dim.input = value[1];
     dim.type = ngx_aggr_query_dim_temp;
 
-    init = cf->handler_conf;
+    init = cf->ctx;
     input = ngx_aggr_query_dim_input_get_complex(init, &dim);
     if (input == NULL) {
         return NGX_CONF_ERROR;
@@ -1321,7 +1328,7 @@ ngx_aggr_filter_regex_conf(ngx_conf_t *cf, ngx_command_t *cmd,
     dim.input = value[1];
     dim.type = ngx_aggr_query_dim_temp;
 
-    init = cf->handler_conf;
+    init = cf->ctx;
     input = ngx_aggr_query_dim_input_get_complex(init, &dim);
     if (input == NULL) {
         return NGX_CONF_ERROR;
@@ -1389,7 +1396,7 @@ ngx_aggr_filter_compare_conf(ngx_conf_t *cf, ngx_command_t *cmd,
     metric.input = value[1];
     metric.type = ngx_aggr_query_metric_sum;
 
-    init = cf->handler_conf;
+    init = cf->ctx;
     if (ngx_aggr_filter_get_metric_offset(init, &metric, &offset)
         != NGX_OK)
     {
@@ -1436,7 +1443,6 @@ ngx_aggr_filter_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_conf_t                save;
     ngx_aggr_filter_t        *filter;
     ngx_aggr_filter_pt        handler;
-    ngx_aggr_conf_ctx_t      *conf_ctx;
     ngx_aggr_query_init_t    *init;
     ngx_aggr_filter_group_t  *ctx;
 
@@ -1454,12 +1460,11 @@ ngx_aggr_filter_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     save = *cf;
 
-    conf_ctx = cf->ctx;
-    ngx_aggr_set_filter_ctx(conf_ctx, &ctx->filters, ngx_aggr_filter_module);
+    ngx_aggr_conf_set_filter_ctx(cf, &ctx->filters, ngx_aggr_filter_module);
 
     if (cf->cmd_type == NGX_AGGR_MAIN_CONF) {
 
-        init = cf->handler_conf;
+        init = cf->ctx;
         if (cmd->offset == offsetof(ngx_aggr_query_t, filter)) {
             cf->cmd_type = NGX_AGGR_FILTER_CONF;
             init->ctx = ngx_aggr_query_ctx_filter;
@@ -1487,10 +1492,10 @@ ngx_aggr_filter_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     *cf = save;
 
     if (cf->cmd_type == NGX_AGGR_MAIN_CONF) {
-        ngx_aggr_set_filter_ctx(conf_ctx, NULL, ngx_aggr_filter_module);
+        ngx_aggr_conf_set_filter_ctx(cf, NULL, ngx_aggr_filter_module);
 
     } else {
-        ngx_aggr_set_filter_ctx(conf_ctx, conf, ngx_aggr_filter_module);
+        ngx_aggr_conf_set_filter_ctx(cf, conf, ngx_aggr_filter_module);
     }
 
     if (rv != NGX_CONF_OK) {
