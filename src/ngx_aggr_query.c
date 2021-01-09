@@ -1687,15 +1687,9 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
                     return rc;
                 }
                 continue;
-            }
 
-            break;
-
-        case NGX_JSON_ARRAY:
-            if (ngx_str_equals_c(elts[i].key, "maps") &&
-                elts[i].value.v.arr.type == NGX_JSON_OBJECT)
-            {
-                rc = ngx_aggr_maps_json(&init, &elts[i].value.v.arr);
+            } else if (ngx_str_equals_c(elts[i].key, "maps")) {
+                rc = ngx_aggr_maps_json(&init, &elts[i].value.v.obj);
                 if (rc != NGX_OK) {
                     return rc;
                 }
