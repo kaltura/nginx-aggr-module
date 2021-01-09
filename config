@@ -6,6 +6,7 @@ ngx_module_libs=
 AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr.h                      \
                 $ngx_addon_dir/src/ngx_aggr_config.h               \
                 $ngx_addon_dir/src/ngx_aggr_filter.h               \
+                $ngx_addon_dir/src/ngx_aggr_map.h                  \
                 $ngx_addon_dir/src/ngx_aggr_output.h               \
                 $ngx_addon_dir/src/ngx_aggr_query.h                \
                 $ngx_addon_dir/src/ngx_aggr_result.h               \

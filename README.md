@@ -522,6 +522,9 @@ If multiple filters are defined in the block, their results are AND'ed before ap
         "user_id": {
             "lower": true
         },
+        "first_name": {
+            "input": "$first_name"
+        }
         "country": {
             "type": "select"
         }
@@ -538,6 +541,14 @@ If multiple filters are defined in the block, their results are AND'ed before ap
             "input": "time"
         }
     },
+    "maps": [{
+        "input": "$dim_full_name",
+        "output": "$first_name",
+        "values": {
+            "~([^ ]+) ": "$1",
+            "default": "Unknown"
+        }
+    }],
     "filter": {
         "type": "in",
         "dim": "domain",
@@ -578,6 +589,18 @@ The following optional properties can be specified:
 * `input` - string, sets the name of the key in the input JSON, the default is `output_name`.
 * `default` - number, sets a default value for the metric, the default will be used if the metric does not appear in the input JSON.
 * `top` - number, include in the output only the events that have the top N values of the metric. If the provided number is negative, the output will include only the events that have the bottom N values of the metric. This property can be applied to one metric at the most.
+
+#### maps
+* **syntax**: `"maps": [ ... ]`
+* **default**: `-`
+* **context**: `query`
+
+An array containing map objects, each map object creates a variable by mapping one or more input dimensions. The variables can then be used as dimensions / in filters.
+
+The following properties are required for each map object in the array:
+* `input` - string, a complex expression containing variables (e.g. `$dim_name`) that is matched against the map `values`.
+* `output` - string, sets the name of the variable that evaluates to the map result, must start with `"$"`.
+* `values` - object, holds the input values and the resulting values. The keys are either simple strings, or regular expressions (prefixed with `"~"`). The values are strings, and can be either simple strings or complex expressions containing variables. See the description of the map directive above for more details.
 
 #### filter
 * **syntax**: `"filter": { ... }`
