@@ -409,9 +409,9 @@ ngx_aggr_query_hash_key_get(ngx_array_t *hash_keys, ngx_str_t *key)
 
 static ngx_int_t
 ngx_aggr_query_hash_key_add(ngx_aggr_query_init_t *init,
-    ngx_array_t *hash_keys, ngx_str_t *key, void *elt)
+    ngx_array_t *hash_keys, ngx_str_t *key, ngx_uint_t offset)
 {
-    void            **pelt;
+    ngx_uint_t       *pelt;
     ngx_array_t      *value;
     ngx_hash_key_t   *hk;
 
@@ -441,9 +441,29 @@ ngx_aggr_query_hash_key_add(ngx_aggr_query_init_t *init,
         return NGX_ERROR;
     }
 
-    *pelt = elt;
+    *pelt = offset;
 
     return NGX_OK;
+}
+
+
+static void
+ngx_aggr_query_hash_set_offsets(ngx_array_t *hash_keys, ngx_array_t *arr)
+{
+    ngx_uint_t       i, j;
+    ngx_uint_t      *elts;
+    ngx_array_t     *value;
+    ngx_hash_key_t  *hk;
+
+    hk = hash_keys->elts;
+    for (i = 0; i < hash_keys->nelts; i++) {
+        value = hk[i].value;
+
+        elts = value->elts;
+        for (j = 0; j < value->nelts; j++) {
+            elts[j] = (ngx_uint_t) arr->elts + elts[j] * arr->size;
+        }
+    }
 }
 
 
@@ -535,7 +555,7 @@ ngx_aggr_query_dim_input_get_simple(ngx_aggr_query_init_t *init,
     }
 
     if (ngx_aggr_query_hash_key_add(init, &init->dim_hash_keys, &input->name,
-                                    input)
+                                    input->offset)
         != NGX_OK)
     {
         return NULL;
@@ -933,7 +953,7 @@ ngx_aggr_query_metric_input_get(ngx_aggr_query_init_t *init,
     input->default_value = metric->default_value;
 
     if (ngx_aggr_query_hash_key_add(init, &init->metric_hash_keys,
-                                    &input->name, input)
+                                    &input->name, input->offset)
         != NGX_OK)
     {
         return NULL;
@@ -1336,6 +1356,9 @@ ngx_aggr_query_postconfiguration(ngx_aggr_query_init_t *init,
     hash.max_size = query->metrics_hash_max_size;
     hash.bucket_size = query->metrics_hash_bucket_size;
 
+    ngx_aggr_query_hash_set_offsets(&init->metric_hash_keys,
+        &query->metrics_in);
+
     if (ngx_hash_init_case_sensitive(&hash, init->metric_hash_keys.elts,
                                      init->metric_hash_keys.nelts)
         != NGX_OK)
@@ -1347,6 +1370,9 @@ ngx_aggr_query_postconfiguration(ngx_aggr_query_init_t *init,
     hash.hash = &query->dims_hash;
     hash.max_size = query->dims_hash_max_size;
     hash.bucket_size = query->dims_hash_bucket_size;
+
+    ngx_aggr_query_hash_set_offsets(&init->dim_hash_keys,
+        &query->dims_in);
 
     if (ngx_hash_init_case_sensitive(&hash, init->dim_hash_keys.elts,
                                      init->dim_hash_keys.nelts)
