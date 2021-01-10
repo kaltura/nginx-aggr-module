@@ -30,8 +30,6 @@ static ngx_aggr_variable_t  ngx_aggr_core_variables[] = {
 ngx_aggr_variable_value_t  ngx_aggr_variable_null_value =
     ngx_aggr_variable("");
 
-static ngx_uint_t  ngx_aggr_variable_depth = 100;
-
 
 ngx_aggr_variable_t *
 ngx_aggr_add_variable(ngx_aggr_query_init_t *init, ngx_str_t *name,
@@ -252,19 +250,19 @@ ngx_aggr_get_indexed_variable(ngx_aggr_result_t *ar, ngx_uint_t index)
 
     v = query->variables.elts;
 
-    if (ngx_aggr_variable_depth == 0) {
+    if (ar->variable_depth == 0) {
         ngx_log_error(NGX_LOG_ERR, ar->pool->log, 0,
                       "cycle while evaluating variable \"%V\"",
                       &v[index].name);
         return NULL;
     }
 
-    ngx_aggr_variable_depth--;
+    ar->variable_depth--;
 
     if (v[index].get_handler(ar, &ar->variables[index], v[index].data)
         == NGX_OK)
     {
-        ngx_aggr_variable_depth++;
+        ar->variable_depth++;
 
         if (v[index].flags & NGX_AGGR_VAR_NOCACHEABLE) {
             ar->variables[index].no_cacheable = 1;
@@ -273,7 +271,7 @@ ngx_aggr_get_indexed_variable(ngx_aggr_result_t *ar, ngx_uint_t index)
         return &ar->variables[index];
     }
 
-    ngx_aggr_variable_depth++;
+    ar->variable_depth++;
 
     ar->variables[index].valid = 0;
     ar->variables[index].not_found = 1;
