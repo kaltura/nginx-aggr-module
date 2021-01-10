@@ -1080,6 +1080,10 @@ ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
 
     ar->variable_depth = 100;
 
+    ar->ncaptures = 0;
+    ar->captures_data = NULL;
+    ngx_memzero(&ar->var_temp, sizeof(ar->var_temp));
+
     return ar;
 
 failed:
