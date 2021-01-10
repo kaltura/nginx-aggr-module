@@ -50,6 +50,7 @@ struct ngx_aggr_result_s {
     ngx_buf_t                   var_temp;
 
     ngx_aggr_variable_value_t  *variables;
+    ngx_uint_t                  variable_depth;
 
 #if (NGX_PCRE)
     ngx_uint_t                  ncaptures;

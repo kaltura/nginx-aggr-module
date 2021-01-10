@@ -1078,6 +1078,8 @@ ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
 
     ar->buf_size = query->max_event_size;
 
+    ar->variable_depth = 100;
+
     return ar;
 
 failed:
