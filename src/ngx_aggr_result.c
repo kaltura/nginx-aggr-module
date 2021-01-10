@@ -652,16 +652,16 @@ done:
     }
 
 
+    if (ngx_aggr_eval_complex_dims(ar) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
     if (query->filter.handler != NULL &&
         !query->filter.handler(ar, query->filter.data))
     {
         return NGX_ABORT;
     }
 
-
-    if (ngx_aggr_eval_complex_dims(ar) != NGX_OK) {
-        return NGX_ERROR;
-    }
 
     /* alloc group dims in str table + calc event hash */
     temp_offset = 0;
