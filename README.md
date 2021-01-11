@@ -16,6 +16,24 @@ To compile as a dynamic module (Nginx 1.9.11+), use:
 
 In this case, the `load_module` directive should be used in nginx.conf to load the module.
 
+### Profile Guided Optimization
+
+From our experience, PGO can provide a significant performance boost to this module - ~30% reduction in query time on our environment.
+You can follow the steps below in order to use PGO:
+
+* configure nginx with `--with-cc-opt="-O3 -fprofile-generate"` and `--with-ld-opt=-lgcov`
+* make install
+* add `dameon off` and `master_process off` to nginx.conf
+* restart nginx
+* apply load simulating the expected production load
+* stop nginx orderly - `nginx -s stop`
+* edit the makefile - `vi ./objs/Makefile`
+    * replace `-fprofile-generate` with `-fprofile-use -fprofile-correction`
+    * remove `-lgcov`
+* delete all object files - `find objs/ -type f -name '*.o' -delete`
+* make install
+* remove `dameon off` and `master_process off` from nginx.conf
+* restart nginx
 
 ## Configuration
 
