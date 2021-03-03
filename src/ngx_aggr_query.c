@@ -1009,19 +1009,50 @@ ngx_aggr_query_metric_push(ngx_aggr_query_init_t *init,
 }
 
 
+static ngx_int_t
+ngx_aggr_query_metric_top(ngx_aggr_query_init_t *init, ngx_int_t top)
+{
+    ngx_aggr_query_t  *query;
+
+    query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
+
+    if (query->top_count > 0) {
+        ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
+            "ngx_aggr_query_metric_top: "
+            "multiple metrics marked with \"top\"");
+        return NGX_BAD_QUERY;
+    }
+
+    init->top_index = query->metrics_out.nelts - 1;
+
+    if (top > 0) {
+        query->top_count = top;
+
+    } else {
+        query->top_count = -top;
+        query->top_inverted = 1;
+    }
+
+    return NGX_OK;
+}
+
+
 static char *
 ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     u_char                   *end;
+    ngx_int_t                 top;
     ngx_str_t                 cur;
     ngx_str_t                *value;
     ngx_uint_t                i;
+    ngx_flag_t                minus;
     ngx_aggr_query_init_t    *init;
     ngx_aggr_query_metric_t   metric;
 
     value = cf->args->elts;
 
     ngx_aggr_query_metric_init(&metric, &value[1]);
+    top = 0;
 
     for (i = 2; i < cf->args->nelts; i++) {
 
@@ -1055,6 +1086,29 @@ ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             }
         }
 
+        if (ngx_strncmp(value[i].data, "top=", 4) == 0) {
+
+            cur.data = value[i].data + 4;
+            cur.len = value[i].len - 4;
+
+            if (cur.data[0] == '-') {
+                minus = 1;
+                cur.data++;
+                cur.len--;
+
+            } else {
+                minus = 0;
+            }
+
+            top = ngx_atoi(cur.data, cur.len);
+            if (top > 0) {
+                if (minus) {
+                    top = -top;
+                }
+                continue;
+            }
+        }
+
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
             "invalid parameter \"%V\"", &value[i]);
 
@@ -1067,6 +1121,12 @@ ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
+    if (top != 0) {
+        if (ngx_aggr_query_metric_top(init, top) != NGX_OK) {
+            return NGX_CONF_ERROR;
+        }
+    }
+
     return NGX_CONF_OK;
 }
 
@@ -1077,7 +1137,6 @@ ngx_aggr_query_metric_json(ngx_aggr_query_init_t *init, ngx_str_t *name,
 {
     ngx_int_t                 top;
     ngx_uint_t                i, n;
-    ngx_aggr_query_t         *query;
     ngx_json_key_value_t     *elts;
     ngx_aggr_query_metric_t   metric;
 
@@ -1131,23 +1190,8 @@ ngx_aggr_query_metric_json(ngx_aggr_query_init_t *init, ngx_str_t *name,
     }
 
     if (top != 0) {
-        query = ngx_aggr_get_module_main_conf(init, ngx_aggr_query_module);
-
-        if (query->top_count > 0) {
-            ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-                "ngx_aggr_query_metric_json: "
-                "multiple metrics marked with \"top\"");
+        if (ngx_aggr_query_metric_top(init, top) != NGX_OK) {
             return NGX_BAD_QUERY;
-        }
-
-        init->top_index = query->metrics_out.nelts - 1;
-
-        if (top > 0) {
-            query->top_count = top;
-
-        } else {
-            query->top_count = -top;
-            query->top_inverted = 1;
         }
     }
 
