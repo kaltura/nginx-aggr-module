@@ -327,7 +327,7 @@ The following optional parameters can be specified:
 * `lower` - if set, the value of the dimension will be lower-cased.
 
 #### metric
-* **syntax**: `metric output_name [type=sum|max] [input=string] [default=number];`
+* **syntax**: `metric output_name [type=sum|max] [input=string] [default=number] [top=number];`
 * **default**: `-`
 * **context**: `query`
 
@@ -338,6 +338,7 @@ The following optional parameters can be specified:
 * `type` - sets the type of the metric - `sum`/`max`, the default is `max`.
 * `input` - sets the name of the key in the input JSON, the default is `output_name`.
 * `default` - sets a default value for the metric, the default will be used if the metric does not appear in the input JSON.
+* `top` - number, include in the output only the events that have the top N values of the metric. If the provided number is negative, the output will include only the events that have the bottom N values of the metric. This property can be applied to one metric at the most.
 
 #### filter
 * **syntax**: `filter { ... }`
