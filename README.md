@@ -23,7 +23,7 @@ You can follow the steps below in order to use PGO:
 
 * configure nginx with `--with-cc-opt="-O3 -fprofile-generate"` and `--with-ld-opt=-lgcov`
 * make install
-* add `dameon off` and `master_process off` to nginx.conf
+* add `daemon off` and `master_process off` to nginx.conf
 * restart nginx
 * apply load simulating the expected production load
 * stop nginx orderly - `nginx -s stop`
