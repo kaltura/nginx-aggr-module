@@ -23,6 +23,7 @@ AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr.h                      \
                 "
 
 AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr_map.c                  \
+                $ngx_addon_dir/src/ngx_aggr_map_metric.c           \
                 $ngx_addon_dir/src/ngx_aggr_filter.c               \
                 $ngx_addon_dir/src/ngx_aggr_output.c               \
                 $ngx_addon_dir/src/ngx_aggr_query.c                \
@@ -41,6 +42,7 @@ AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr_map.c                  \
 
 AGGR_CORE_MODS="ngx_aggr_filter_module                             \
                 ngx_aggr_map_module                                \
+                ngx_aggr_map_metric_module                         \
                 ngx_aggr_query_module                              \
                 ngx_dgram_module                                   \
                 ngx_dgram_core_module                              \
