@@ -390,6 +390,21 @@ Sets the maximum size of the map hash table.
 
 Sets the bucket size for the map hash table. The default value depends on the processor’s cache line size.
 
+#### map_metric
+* **syntax**: `map_metric name $variable { ... }`
+* **default**: `-`
+* **context**: `query`
+
+Creates a new variable whose value depends on the value of the metric specified in the first parameter.
+* Parameters inside the `map_metric` block specify a mapping between ranges of the metric value and resulting values.
+* Source values have the format `min:max` where min and max are numbers.
+* The range includes `min` but does not include `max` - `[min,max)`.
+* The min/max values in each range are optional, if one of them is omitted, it is treated as -inf/+inf respectively.
+* The resulting value can contain text, variables, and their combination.
+
+The following special parameters are also supported:
+* `default` value - sets the resulting value if the source value doesn't match matches any of the specified ranges. When default is not specified, the default resulting value will be an empty string.
+
 #### format
 * **syntax**: `format json|prom;`
 * **default**: `-`
