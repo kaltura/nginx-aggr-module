@@ -21,11 +21,13 @@ class NginxAggrDruidWrapper
 
     protected $schema;
     protected $log;
+    protected $maps;
 
     public function __construct($schema, $log)
     {
         $this->schema = $schema;
         $this->log = $log;
+        $this->maps = array();
     }
 
     protected static function metadataColumnString()
@@ -138,10 +140,24 @@ class NginxAggrDruidWrapper
         return json_encode($response);
     }
 
-    protected function translateFilter($filter)
+    protected function getDim($dim)
     {
         $dimMap = $this->schema[CONF_DIMS];
 
+        $dim = $dimMap[$dim];
+        if (isset($dim['maps']))
+        {
+            $maps = $dim['maps'];
+            unset($dim['maps']);
+
+            $this->maps = array_merge($this->maps, $maps);
+        }
+
+        return $dim;
+    }
+
+    protected function translateFilter($filter)
+    {
         switch ($filter->type)
         {
         case 'or':
@@ -166,14 +182,14 @@ class NginxAggrDruidWrapper
         case 'selector':
             return array(
                 'type' => 'in',
-                'dim' => $dimMap[$filter->dimension]['input'],
+                'dim' => $this->getDim($filter->dimension)['input'],
                 'values' => array(strval($filter->value))
             );
 
         case 'in':
             return array(
                 'type' => 'in',
-                'dim' => $dimMap[$filter->dimension]['input'],
+                'dim' => $this->getDim($filter->dimension)['input'],
                 'values' => array_map('strval', $filter->values)
             );
 
@@ -183,7 +199,7 @@ class NginxAggrDruidWrapper
             case 'contains':
                 return array(
                     'type' => 'contains',
-                    'dim' => $dimMap[$filter->dimension]['input'],
+                    'dim' => $this->getDim($filter->dimension)['input'],
                     'values' => array($filter->query->value),
                     'case_sensitive' => $filter->query->caseSensitive
                 );
@@ -195,7 +211,7 @@ class NginxAggrDruidWrapper
         case 'regex':
             return array(
                 'type' => 'regex',
-                'dim' => $dimMap[$filter->dimension]['input'],
+                'dim' => $this->getDim($filter->dimension)['input'],
                 'pattern' => $filter->pattern
             );
 
@@ -208,9 +224,11 @@ class NginxAggrDruidWrapper
     {
         $metricMap = $this->schema[CONF_METRICS];
         $metrics = array();
+        $empty = array();
         foreach ($query->aggregations as $aggr)
         {
             $metrics[$aggr->name] = $metricMap[$aggr->fieldName];
+            $empty[$aggr->name] = 0;
         }
 
         $request = array('metrics' => $metrics);
@@ -218,10 +236,21 @@ class NginxAggrDruidWrapper
         {
             $request['filter'] = $this->translateFilter($query->filter);
         }
+        if ($this->maps)
+        {
+            $request['maps'] = $this->maps;
+        }
 
         $url = $this->schema[CONF_URL];
         $response = postJson($url, $request, $this->log);
-        $response = substr($response, 1, -1);        // strip the []
+        if ($response == '[]')
+        {
+            $response = json_encode($empty);
+        }
+        else
+        {
+            $response = substr($response, 1, -1);        // strip the []
+        }
 
         $intervals = explode('/', $query->intervals);
         return '[{"timestamp":"' . $intervals[0] . '","result":' . $response . '}]';
@@ -267,16 +296,19 @@ class NginxAggrDruidWrapper
             $metrics[$aggr->name] = $spec;
         }
 
-        $dimMap = $this->schema[CONF_DIMS];
         $dimension = $query->dimension->dimension;
         $dims = array(
-            $dimension => $dimMap[$dimension]
+            $dimension => $this->getDim($dimension)
         );
 
         $request = array('metrics' => $metrics, 'dims' => $dims);
         if (isset($query->filter))
         {
             $request['filter'] = $this->translateFilter($query->filter);
+        }
+        if ($this->maps)
+        {
+            $request['maps'] = $this->maps;
         }
 
         $url = $this->schema[CONF_URL];
@@ -417,3 +449,4 @@ if (!count(debug_backtrace()))
 {
     main();
 }
+
