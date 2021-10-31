@@ -857,7 +857,9 @@ ngx_dgram_init_worker(ngx_cycle_t *cycle)
 
     ls = cmcf->listening.elts;
     for (i = 0; i < cmcf->listening.nelts; i++) {
-        ngx_dgram_thread_init(cycle->log, &ls[i]);
+        if (ngx_dgram_thread_init(cycle->log, &ls[i]) != NGX_OK) {
+            return NGX_ERROR;
+        }
     }
 
     return NGX_OK;

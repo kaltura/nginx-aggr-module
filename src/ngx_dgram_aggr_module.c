@@ -85,6 +85,13 @@ static ngx_command_t  ngx_dgram_aggr_commands[] = {
       offsetof(ngx_dgram_aggr_main_conf_t, windows_hash_bucket_size),
       NULL },
 
+    { ngx_string("aggr_output_file"),
+      NGX_DGRAM_SRV_CONF|NGX_CONF_BLOCK|NGX_CONF_1MORE,
+      ngx_aggr_output_file,
+      NGX_DGRAM_SRV_CONF_OFFSET,
+      offsetof(ngx_dgram_aggr_srv_conf_t, outputs),
+      NULL },
+
 #if (NGX_HAVE_LIBRDKAFKA)
     { ngx_string("aggr_output_kafka"),
       NGX_DGRAM_SRV_CONF|NGX_CONF_BLOCK|NGX_CONF_2MORE,
