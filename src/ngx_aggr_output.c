@@ -1,6 +1,7 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <pthread.h>
+#include <zlib.h>
 #if (NGX_HAVE_LIBRDKAFKA)
 #include "ngx_kafka_producer.h"
 #endif
@@ -11,34 +12,46 @@
 
 typedef void (*ngx_aggr_output_poll_pt)(void *data);
 
+typedef ngx_int_t (*ngx_aggr_output_init_pt)(void *data, ngx_log_t *log,
+    time_t t);
+typedef void (*ngx_aggr_output_close_pt)(void *data);
+
 
 typedef struct {
-    ngx_uint_t                 queue_size;
+    ngx_uint_t                    queue_size;
 } ngx_aggr_output_conf_t;
 
 
 typedef struct {
-    ngx_aggr_query_t          *query;
-    ngx_uint_t                 queue_size;
-    ngx_log_t                 *log;
+    ngx_aggr_query_t             *query;
+    ngx_uint_t                    queue_size;
+    ngx_log_t                    *log;
 
-    ngx_aggr_bucket_t        **queue;
-    volatile ngx_uint_t        read_pos;
-    volatile ngx_uint_t        write_pos;
+    ngx_aggr_bucket_t           **queue;
+    volatile ngx_uint_t           read_pos;
+    volatile ngx_uint_t           write_pos;
 
-    ngx_aggr_output_poll_pt    poll;
-    ngx_aggr_event_send_pt     handler;
-    void                      *data;
+    ngx_aggr_output_poll_pt       poll;
+    ngx_aggr_output_init_pt       init;
+    ngx_aggr_event_send_pt        handler;
+    ngx_aggr_output_close_pt      close;
+    void                         *data;
 } ngx_aggr_output_ctx_t;
+
+
+typedef struct {
+    ngx_str_t                     path_format;
+    gzFile                        file;
+} ngx_aggr_output_file_ctx_t;
 
 
 static ngx_atomic_t   aggr_threads = 0;
 ngx_atomic_t         *ngx_aggr_threads = &aggr_threads;
 
 
-#if (NGX_HAVE_LIBRDKAFKA)    /* TODO: remove when adding more output types */
 static char *
-ngx_aggr_output_init_conf(ngx_conf_t *cf, ngx_aggr_output_conf_t *output_conf)
+ngx_aggr_output_init_conf(ngx_conf_t *cf, ngx_aggr_output_conf_t *output_conf,
+    ngx_uint_t required_args)
 {
     ngx_str_t    tmp;
     ngx_str_t   *value;
@@ -48,7 +61,7 @@ ngx_aggr_output_init_conf(ngx_conf_t *cf, ngx_aggr_output_conf_t *output_conf)
 
     output_conf->queue_size = 64;
 
-    for (i = 3; i < cf->args->nelts; ) {
+    for (i = required_args + 1; i < cf->args->nelts; ) {
 
         if (ngx_strncmp(value[i].data, "queue_size=", 11) == 0) {
 
@@ -75,7 +88,6 @@ ngx_aggr_output_init_conf(ngx_conf_t *cf, ngx_aggr_output_conf_t *output_conf)
 
     return NGX_CONF_OK;
 }
-#endif
 
 
 static void
@@ -99,9 +111,32 @@ ngx_aggr_output_push(ngx_aggr_output_ctx_t *output, ngx_aggr_bucket_t *bucket)
 }
 
 
+static ngx_int_t
+ngx_aggr_output_send(ngx_aggr_output_ctx_t *output, ngx_aggr_result_t *ar,
+    time_t t)
+{
+    ngx_int_t  rc;
+
+    if (output->init) {
+        if (output->init(output->data, output->log, t) != NGX_OK) {
+            return NGX_ERROR;
+        }
+    }
+
+    rc = ngx_aggr_result_send(ar, output->handler, output->data);
+
+    if (output->close) {
+        output->close(output->data);
+    }
+
+    return rc;
+}
+
+
 static void *
 ngx_aggr_output_cycle(void *data)
 {
+    time_t                  granularity;
     ngx_uint_t              period;
     ngx_uint_t              last_period;
     ngx_aggr_query_t       *query;
@@ -115,13 +150,16 @@ ngx_aggr_output_cycle(void *data)
         "ngx_aggr_output_cycle: thread started");
 
     query = output->query;
+    granularity = query->granularity;
 
     ar = NULL;
     last_period = 0;
 
     while (!ngx_terminate && !ngx_exiting) {
 
-        output->poll(output->data);
+        if (output->poll) {
+            output->poll(output->data);
+        }
 
         if (output->read_pos == output->write_pos) {
             ngx_msleep(500);
@@ -134,22 +172,19 @@ ngx_aggr_output_cycle(void *data)
 
         output->read_pos = (output->read_pos + 1) % output->queue_size;
 
-        period = ngx_aggr_bucket_get_time(bucket) / query->granularity;
+        period = ngx_aggr_bucket_get_time(bucket) / granularity;
 
         if (last_period != period) {
 
-            new_ar = ngx_aggr_result_create(query, period * query->granularity,
+            new_ar = ngx_aggr_result_create(query, period * granularity,
                 ar);
             if (new_ar == NULL) {
                 break;
             }
 
             if (ar != NULL) {
-                if (ngx_aggr_result_send(ar, output->handler, output->data)
-                    != NGX_OK)
-                {
-                    break;
-                }
+                (void) ngx_aggr_output_send(output, ar,
+                    last_period * granularity);
             }
 
             ar = new_ar;
@@ -229,7 +264,6 @@ ngx_aggr_outputs_init(ngx_conf_t *cf, ngx_aggr_outputs_conf_t *conf)
 }
 
 
-#if (NGX_HAVE_LIBRDKAFKA)    /* TODO: remove when adding more output types */
 static ngx_aggr_output_ctx_t *
 ngx_aggr_outputs_add(ngx_conf_t *cf, ngx_aggr_outputs_conf_t *conf,
     ngx_aggr_output_conf_t *output_conf)
@@ -258,7 +292,6 @@ ngx_aggr_outputs_add(ngx_conf_t *cf, ngx_aggr_outputs_conf_t *conf,
 
     return output;
 }
-#endif
 
 
 void
@@ -316,6 +349,98 @@ ngx_aggr_outputs_close(ngx_cycle_t *cycle)
 }
 
 
+static ngx_int_t
+ngx_aggr_output_file_init(void *data, ngx_log_t *log, time_t t)
+{
+    struct tm                    tm;
+    ngx_aggr_output_file_ctx_t  *ctx = data;
+    char                         path[NGX_MAX_PATH];
+
+    ngx_libc_gmtime(t, &tm);
+
+    if (strftime(path, sizeof(path), (char *) ctx->path_format.data, &tm)
+        == 0)
+    {
+        ngx_log_error(NGX_LOG_ERR, log, 0,
+            "ngx_aggr_output_file_init: strftime failed");
+        return NGX_ERROR;
+    }
+
+    ctx->file = gzopen(path, "wb");
+    if (!ctx->file) {
+        ngx_log_error(NGX_LOG_ERR, log, ngx_errno,
+            "ngx_aggr_output_file_init: gzopen(%s) failed", path);
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
+static void
+ngx_aggr_output_file_write(void *data, void *buf, size_t len, void *free_ctx)
+{
+    ngx_aggr_output_file_ctx_t  *ctx = data;
+
+    gzwrite(ctx->file, buf, len);
+    gzwrite(ctx->file, "\n", 1);
+
+    ngx_aggr_result_send_buf_free(free_ctx);
+}
+
+
+static void
+ngx_aggr_output_file_close(void *data)
+{
+    ngx_aggr_output_file_ctx_t  *ctx = data;
+
+    gzclose(ctx->file);
+    ctx->file = NULL;
+}
+
+
+char *
+ngx_aggr_output_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    char  *p = conf;
+
+    char                        *rv;
+    ngx_str_t                   *value;
+    ngx_aggr_output_ctx_t       *output;
+    ngx_aggr_output_conf_t       output_conf;
+    ngx_aggr_outputs_conf_t     *ocf;
+    ngx_aggr_output_file_ctx_t  *ctx;
+
+    value = cf->args->elts;
+
+    ocf = (ngx_aggr_outputs_conf_t *) (p + cmd->offset);
+
+    rv = ngx_aggr_output_init_conf(cf, &output_conf, 1);
+    if (rv != NGX_CONF_OK) {
+        return rv;
+    }
+
+    ctx = ngx_pcalloc(cf->pool, sizeof(*ctx));
+    if (ctx == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ctx->path_format = value[1];
+
+    output = ngx_aggr_outputs_add(cf, ocf, &output_conf);
+    if (output == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    output->init = ngx_aggr_output_file_init;
+    output->handler = ngx_aggr_output_file_write;
+    output->close = ngx_aggr_output_file_close;
+    output->data = ctx;
+
+    return NGX_CONF_OK;
+}
+
+
 #if (NGX_HAVE_LIBRDKAFKA)
 char *
 ngx_aggr_output_kafka(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
@@ -331,7 +456,7 @@ ngx_aggr_output_kafka(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ocf = (ngx_aggr_outputs_conf_t *) (p + cmd->offset);
 
-    rv = ngx_aggr_output_init_conf(cf, &output_conf);
+    rv = ngx_aggr_output_init_conf(cf, &output_conf, 2);
     if (rv != NGX_CONF_OK) {
         return rv;
     }
