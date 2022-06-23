@@ -1,14 +1,10 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include "ngx_dgram.h"
-#include "ngx_dgram_aggr_module.h"
-#include "ngx_aggr_window.h"
+#include "ngx_aggr.h"
 #include "ngx_aggr_output.h"
 
 
-static ngx_int_t ngx_dgram_aggr_postconfiguration(ngx_conf_t *cf);
-static void *ngx_dgram_aggr_create_main_conf(ngx_conf_t *cf);
-static char *ngx_dgram_aggr_init_main_conf(ngx_conf_t *cf, void *conf);
 static void *ngx_dgram_aggr_create_srv_conf(ngx_conf_t *cf);
 static char *ngx_dgram_aggr_merge_srv_conf(ngx_conf_t *cf, void *parent,
     void *child);
@@ -23,15 +19,6 @@ typedef struct {
     ngx_aggr_window_conf_t    window;
     ngx_aggr_outputs_conf_t   outputs;
 } ngx_dgram_aggr_srv_conf_t;
-
-
-typedef struct {
-    ngx_hash_t                windows_hash;
-    ngx_hash_keys_arrays_t   *windows_keys;
-
-    ngx_uint_t                windows_hash_max_size;
-    ngx_uint_t                windows_hash_bucket_size;
-} ngx_dgram_aggr_main_conf_t;
 
 
 static ngx_command_t  ngx_dgram_aggr_commands[] = {
@@ -71,20 +58,6 @@ static ngx_command_t  ngx_dgram_aggr_commands[] = {
       offsetof(ngx_dgram_aggr_srv_conf_t, window.recv_size),
       NULL },
 
-    { ngx_string("aggr_windows_hash_max_size"),
-      NGX_DGRAM_MAIN_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_num_slot,
-      NGX_DGRAM_MAIN_CONF_OFFSET,
-      offsetof(ngx_dgram_aggr_main_conf_t, windows_hash_max_size),
-      NULL },
-
-    { ngx_string("aggr_windows_hash_bucket_size"),
-      NGX_DGRAM_MAIN_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_num_slot,
-      NGX_DGRAM_MAIN_CONF_OFFSET,
-      offsetof(ngx_dgram_aggr_main_conf_t, windows_hash_bucket_size),
-      NULL },
-
     { ngx_string("aggr_output_file"),
       NGX_DGRAM_SRV_CONF|NGX_CONF_BLOCK|NGX_CONF_1MORE,
       ngx_aggr_output_file,
@@ -107,10 +80,10 @@ static ngx_command_t  ngx_dgram_aggr_commands[] = {
 
 static ngx_dgram_module_t  ngx_dgram_aggr_module_ctx = {
     NULL,                                  /* preconfiguration */
-    ngx_dgram_aggr_postconfiguration,      /* postconfiguration */
+    NULL,                                  /* postconfiguration */
 
-    ngx_dgram_aggr_create_main_conf,       /* create main configuration */
-    ngx_dgram_aggr_init_main_conf,         /* init main configuration */
+    NULL,                                  /* create main configuration */
+    NULL,                                  /* init main configuration */
 
     ngx_dgram_aggr_create_srv_conf,        /* create server configuration */
     ngx_dgram_aggr_merge_srv_conf          /* merge server configuration */
@@ -209,12 +182,11 @@ ngx_dgram_aggr_input_handler(ngx_dgram_session_t *s)
 static char *
 ngx_dgram_aggr_input(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_int_t                    rv;
-    ngx_str_t                   *value;
-    ngx_uint_t                   i;
-    ngx_dgram_core_srv_conf_t   *cscf;
-    ngx_dgram_aggr_srv_conf_t   *ascf;
-    ngx_dgram_aggr_main_conf_t  *amcf;
+    ngx_int_t                   rv;
+    ngx_str_t                  *value;
+    ngx_uint_t                  i;
+    ngx_dgram_core_srv_conf_t  *cscf;
+    ngx_dgram_aggr_srv_conf_t  *ascf;
 
     cscf = ngx_dgram_conf_get_module_srv_conf(cf, ngx_dgram_core_module);
 
@@ -225,7 +197,6 @@ ngx_dgram_aggr_input(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     cscf->handler = ngx_dgram_aggr_input_handler;
 
     ascf = ngx_dgram_conf_get_module_srv_conf(cf, ngx_dgram_aggr_module);
-    amcf = ngx_dgram_conf_get_module_main_conf(cf, ngx_dgram_aggr_module);
 
     value = cf->args->elts;
 
@@ -235,8 +206,7 @@ ngx_dgram_aggr_input(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             ascf->window.name.data = value[i].data + 5;
             ascf->window.name.len = value[i].len - 5;
 
-            rv = ngx_hash_add_key(amcf->windows_keys, &ascf->window.name,
-                &ascf->window, NGX_HASH_READONLY_KEY);
+            rv = ngx_aggr_add_window(cf, &ascf->window.name, &ascf->window);
 
             if (rv == NGX_OK) {
                 continue;
@@ -254,124 +224,6 @@ ngx_dgram_aggr_input(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                            "invalid parameter \"%V\"", &value[i]);
         return NGX_CONF_ERROR;
     }
-
-    return NGX_CONF_OK;
-}
-
-
-ngx_chain_t **
-ngx_dgram_aggr_query(ngx_pool_t *pool, ngx_cycle_t *cycle, ngx_str_t *name,
-    ngx_aggr_query_t *query, ngx_chain_t **last, off_t *size)
-{
-    ngx_uint_t                   key;
-    ngx_aggr_result_t           *ar;
-    ngx_aggr_window_conf_t      *conf;
-    ngx_dgram_aggr_main_conf_t  *amcf;
-
-    amcf = ngx_dgram_cycle_get_module_main_conf(cycle, ngx_dgram_aggr_module);
-
-    key = ngx_hash_key(name->data, name->len);
-
-    conf = ngx_hash_find(&amcf->windows_hash, key, name->data, name->len);
-    if (conf == NULL) {
-        ngx_log_error(NGX_LOG_ERR, pool->log, 0,
-            "ngx_dgram_aggr_query: unknown window \"%V\"", name);
-        return NULL;
-    }
-
-    ar = ngx_aggr_result_create(query, ngx_time(), NULL);
-    if (ar == NULL) {
-        return NULL;
-    }
-
-    if (ngx_aggr_window_process(conf->window, pool, ar) != NGX_OK) {
-        goto failed;
-    }
-
-    last = ngx_aggr_result_write(ar, pool, last, size);
-    if (last == NULL) {
-        goto failed;
-    }
-
-    ngx_aggr_result_destroy(ar);
-
-    return last;
-
-failed:
-
-    ngx_aggr_result_destroy(ar);
-
-    return NULL;
-}
-
-
-static ngx_int_t
-ngx_dgram_aggr_postconfiguration(ngx_conf_t *cf)
-{
-    ngx_hash_init_t              hash;
-    ngx_hash_keys_arrays_t      *keys;
-    ngx_dgram_aggr_main_conf_t  *amcf;
-
-    amcf = ngx_dgram_conf_get_module_main_conf(cf, ngx_dgram_aggr_module);
-
-    hash.hash = &amcf->windows_hash;
-    hash.key = ngx_hash_key;
-    hash.max_size = amcf->windows_hash_max_size;
-    hash.bucket_size = amcf->windows_hash_bucket_size;
-    hash.name = "windows_hash";
-    hash.pool = cf->pool;
-    hash.temp_pool = NULL;
-
-    keys = amcf->windows_keys;
-    if (ngx_hash_init(&hash, keys->keys.elts, keys->keys.nelts) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-    amcf->windows_keys = NULL;
-
-    return NGX_OK;
-}
-
-
-static void *
-ngx_dgram_aggr_create_main_conf(ngx_conf_t *cf)
-{
-    ngx_dgram_aggr_main_conf_t  *conf;
-
-    conf = ngx_pcalloc(cf->pool, sizeof(*conf));
-    if (conf == NULL) {
-        return NULL;
-    }
-
-    conf->windows_keys = ngx_pcalloc(cf->temp_pool,
-                                     sizeof(ngx_hash_keys_arrays_t));
-    if (conf->windows_keys == NULL) {
-        return NULL;
-    }
-
-    conf->windows_keys->pool = cf->pool;
-    conf->windows_keys->temp_pool = cf->pool;
-
-    if (ngx_hash_keys_array_init(conf->windows_keys, NGX_HASH_SMALL)
-        != NGX_OK)
-    {
-        return NULL;
-    }
-
-    conf->windows_hash_max_size = NGX_CONF_UNSET_UINT;
-    conf->windows_hash_bucket_size = NGX_CONF_UNSET_UINT;
-
-    return conf;
-}
-
-
-static char *
-ngx_dgram_aggr_init_main_conf(ngx_conf_t *cf, void *conf)
-{
-    ngx_dgram_aggr_main_conf_t  *amcf = conf;
-
-    ngx_conf_init_uint_value(amcf->windows_hash_max_size, 512);
-    ngx_conf_init_uint_value(amcf->windows_hash_bucket_size, 64);
 
     return NGX_CONF_OK;
 }

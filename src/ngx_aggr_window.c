@@ -1,6 +1,6 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
-#include "ngx_aggr_window.h"
+#include "ngx_aggr.h"
 
 
 struct ngx_aggr_bucket_s {

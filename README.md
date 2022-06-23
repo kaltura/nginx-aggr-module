@@ -98,6 +98,29 @@ http {
 }
 ```
 
+### aggr core directives
+
+#### aggr
+* **syntax**: `aggr { ... }`
+* **default**: `-`
+* **context**: `main`
+
+Provides the configuration file context in which the global aggr directives are specified.
+
+#### windows_hash_max_size
+* **syntax**: `windows_hash_max_size size;`
+* **default**: `512`
+* **context**: `aggr`
+
+Sets the maximum size of the event windows hash table.
+
+#### windows_hash_bucket_size
+* **syntax**: `windows_hash_bucket_size size;`
+* **default**: `64`
+* **context**: `aggr`
+
+Sets the bucket size for the event windows hash table.
+
 ### dgram core directives
 
 #### dgram
@@ -205,20 +228,6 @@ It is recommended to set `aggr_input_buf_size` to be several times larger than `
 in order to reduce memory fragmentation - up to recv_size bytes can be wasted per buffer.
 
 When using UDP, the value should be large enough to contain the largest expected event, to avoid reassembly.
-
-#### aggr_windows_hash_max_size
-* **syntax**: `aggr_windows_hash_max_size size;`
-* **default**: `512`
-* **context**: `dgram`
-
-Sets the maximum size of the event windows hash table.
-
-#### aggr_windows_hash_bucket_size
-* **syntax**: `aggr_windows_hash_bucket_size size;`
-* **default**: `64`
-* **context**: `dgram`
-
-Sets the bucket size for the event windows hash table.
 
 #### kafka_producer
 * **syntax**: `kafka_producer name brokers=list [client_id=string] [compression=string] [debug=list] [log_level=number] [buffer_max_msgs=number] [buffer_max_ms=number] [max_retries=number] [backoff_ms=number];`

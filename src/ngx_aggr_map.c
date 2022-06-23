@@ -47,14 +47,14 @@ static ngx_command_t  ngx_aggr_map_commands[] = {
       NULL },
 
     { ngx_string("map_hash_max_size"),
-      NGX_AGGR_MAIN_CONF |NGX_CONF_TAKE1,
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
       NGX_AGGR_MAIN_CONF_OFFSET,
       offsetof(ngx_aggr_map_conf_t, hash_max_size),
       NULL },
 
     { ngx_string("map_hash_bucket_size"),
-      NGX_AGGR_MAIN_CONF |NGX_CONF_TAKE1,
+      NGX_AGGR_MAIN_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
       NGX_AGGR_MAIN_CONF_OFFSET,
       offsetof(ngx_aggr_map_conf_t, hash_bucket_size),
