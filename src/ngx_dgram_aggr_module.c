@@ -100,7 +100,7 @@ ngx_module_t  ngx_dgram_aggr_module = {
     ngx_dgram_aggr_init_worker,            /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
-    ngx_aggr_outputs_close,                /* exit process */
+    NULL,                                  /* exit process */
     NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };

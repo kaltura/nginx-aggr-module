@@ -1,6 +1,7 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include "ngx_aggr.h"
+#include "ngx_aggr_output.h"
 
 
 static char *ngx_aggr_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
@@ -62,7 +63,7 @@ ngx_module_t  ngx_aggr_module = {
     NULL,                                  /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
-    NULL,                                  /* exit process */
+    ngx_aggr_outputs_close,                /* exit process */
     NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };
