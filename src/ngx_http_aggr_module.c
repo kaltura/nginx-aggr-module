@@ -3,7 +3,6 @@
 #include <ngx_http.h>
 #include "ngx_json_parser.h"
 #include "ngx_aggr.h"
-#include "ngx_dgram_aggr_module.h"
 
 
 typedef struct {
@@ -315,7 +314,7 @@ ngx_http_aggr_thread(void *data, ngx_log_t *log)
             continue;
         }
 
-        last = ngx_dgram_aggr_query(pool, (ngx_cycle_t *) ngx_cycle,
+        last = ngx_aggr_query(pool, (ngx_cycle_t *) ngx_cycle,
             &ctx->windows[i], query->query, last, &size);
         if (last == NULL) {
             goto failed;

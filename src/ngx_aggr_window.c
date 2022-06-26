@@ -1,6 +1,6 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
-#include "ngx_aggr_window.h"
+#include "ngx_aggr.h"
 
 
 struct ngx_aggr_bucket_s {
@@ -151,6 +151,26 @@ ngx_aggr_bucket_add_ref(ngx_aggr_bucket_t *bucket)
 
 
 static void
+ngx_aggr_bucket_replace_delim(ngx_aggr_bucket_t *bucket)
+{
+    u_char           delim;
+    u_char          *p, *last;
+    ngx_aggr_buf_t  *cur;
+
+    delim = bucket->window->conf.delim;
+
+    for (cur = bucket->head; cur != NULL; cur = cur->next) {
+        last = cur->last;
+        for (p = cur->start; p < last; p++) {
+            if (*p == delim) {
+                *p = '\0';
+            }
+        }
+    }
+}
+
+
+static void
 ngx_aggr_bucket_send(ngx_aggr_bucket_t *bucket)
 {
     ngx_aggr_window_t  *window;
@@ -158,6 +178,10 @@ ngx_aggr_bucket_send(ngx_aggr_bucket_t *bucket)
     window = bucket->window;
 
     *bucket->last = NULL;
+
+    if (window->conf.delim != '\0') {
+        ngx_aggr_bucket_replace_delim(bucket);
+    }
 
     window->handler(window->data, bucket);
 
@@ -242,6 +266,7 @@ ngx_aggr_window_conf_init(ngx_aggr_window_conf_t *conf)
     conf->buf_size = NGX_CONF_UNSET_SIZE;
     conf->max_buffers = NGX_CONF_UNSET_UINT;
     conf->recv_size = NGX_CONF_UNSET_SIZE;
+    conf->delim = NGX_CONF_UNSET;
 }
 
 
@@ -253,6 +278,7 @@ ngx_aggr_window_conf_merge(ngx_aggr_window_conf_t *conf,
     ngx_conf_merge_size_value(conf->buf_size, prev->buf_size, 65536);
     ngx_conf_merge_uint_value(conf->max_buffers, prev->max_buffers, 4096);
     ngx_conf_merge_size_value(conf->recv_size, prev->recv_size, 4096);
+    ngx_conf_merge_value(conf->delim, prev->delim, 0);
 }
 
 
@@ -369,6 +395,36 @@ ngx_aggr_window_get_recv_buf(ngx_aggr_window_t *window,
 
 
 ngx_int_t
+ngx_aggr_window_write(ngx_aggr_window_t *window, u_char *p, u_char *last)
+{
+    size_t           in_left, out_left;
+    ngx_int_t        rc;
+    ngx_aggr_buf_t  *buf;
+
+    for ( ;; ) {
+
+        rc = ngx_aggr_window_get_recv_buf(window, &buf);
+        if (rc != NGX_OK) {
+            return rc;
+        }
+
+        in_left = last - p;
+        out_left = buf->end - buf->last;
+
+        if (in_left <= out_left) {
+            buf->last = ngx_copy(buf->last, p, in_left);
+            break;
+        }
+
+        buf->last = ngx_copy(buf->last, p, out_left);
+        p += out_left;
+    }
+
+    return NGX_OK;
+}
+
+
+ngx_int_t
 ngx_aggr_window_process(ngx_aggr_window_t *window, ngx_pool_t *pool,
     ngx_aggr_result_t *ar)
 {
@@ -415,4 +471,35 @@ done:
     }
 
     return rc;
+}
+
+
+char *
+ngx_conf_set_char_slot(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    char  *p = conf;
+
+    ngx_int_t        *field;
+    ngx_str_t        *value;
+    ngx_conf_post_t  *post;
+
+    field = (ngx_int_t *) (p + cmd->offset);
+
+    if (*field != NGX_CONF_UNSET) {
+        return "is duplicate";
+    }
+
+    value = cf->args->elts;
+    if (value[1].len != 1) {
+        return "has invalid length";
+    }
+
+    *field = value[1].data[0];
+
+    if (cmd->post) {
+        post = cmd->post;
+        return post->post_handler(cf, post, field);
+    }
+
+    return NGX_CONF_OK;
 }

@@ -1,6 +1,6 @@
 # Nginx Aggregation Module
 
-Aggregates JSON events received over UDP/TCP.
+Aggregates JSON events received over UDP/TCP/HTTP.
 The aggregated events can be pushed to a Kafka topic, gzip files or pulled over HTTP.
 
 
@@ -97,6 +97,47 @@ http {
     }
 }
 ```
+
+### aggr core directives
+
+#### aggr
+* **syntax**: `aggr { ... }`
+* **default**: `-`
+* **context**: `main`
+
+Provides the configuration file context in which the global aggr directives are specified.
+
+#### windows_hash_max_size
+* **syntax**: `windows_hash_max_size size;`
+* **default**: `512`
+* **context**: `aggr`
+
+Sets the maximum size of the event windows hash table.
+
+#### windows_hash_bucket_size
+* **syntax**: `windows_hash_bucket_size size;`
+* **default**: `64`
+* **context**: `aggr`
+
+Sets the bucket size for the event windows hash table.
+
+#### kafka_producer
+* **syntax**: `kafka_producer name brokers=list [client_id=string] [compression=string] [debug=list] [log_level=number] [buffer_max_msgs=number] [buffer_max_ms=number] [max_retries=number] [backoff_ms=number];`
+* **default**: `-`
+* **context**: `main`
+
+Defines a named Kafka connection that can used as aggregation output.
+The `brokers` parameter sets the initial list of brokers, a comma separated list of `host` or `host:port`.
+
+The following optional parameters can be specified:
+* `client_id` - sets the Kafka client id, the default is `nginx`.
+* `compression` - sets the message compression format, the default is `snappy`.
+* `debug` - sets the list of librdkafka debug contexts, a comma separated list.
+* `log_level` - sets the logging level of librdkafka, the default level is 6.
+* `buffer_max_msgs` - maximum number of messages allowed on the producer queue, the default is 100000.
+* `buffer_max_ms` - the delay in milliseconds to wait for messages in the producer queue to accumulate before constructing message batches, the default is 50.
+* `max_retries` - defines how many times to retry sending a failed message set, the default is 0.
+* `backoff_ms` - the back off time in milliseconds before retrying a message send, the default is 10.
 
 ### dgram core directives
 
@@ -206,37 +247,12 @@ in order to reduce memory fragmentation - up to recv_size bytes can be wasted pe
 
 When using UDP, the value should be large enough to contain the largest expected event, to avoid reassembly.
 
-#### aggr_windows_hash_max_size
-* **syntax**: `aggr_windows_hash_max_size size;`
-* **default**: `512`
-* **context**: `dgram`
+#### aggr_input_delim
+* **syntax**: `aggr_input_delim char;`
+* **default**: `null (\0)`
+* **context**: `dgram, server`
 
-Sets the maximum size of the event windows hash table.
-
-#### aggr_windows_hash_bucket_size
-* **syntax**: `aggr_windows_hash_bucket_size size;`
-* **default**: `64`
-* **context**: `dgram`
-
-Sets the bucket size for the event windows hash table.
-
-#### kafka_producer
-* **syntax**: `kafka_producer name brokers=list [client_id=string] [compression=string] [debug=list] [log_level=number] [buffer_max_msgs=number] [buffer_max_ms=number] [max_retries=number] [backoff_ms=number];`
-* **default**: `-`
-* **context**: `main`
-
-Defines a named Kafka connection that can used as aggregation output.
-The `brokers` parameter sets the initial list of brokers, a comma separated list of `host` or `host:port`.
-
-The following optional parameters can be specified:
-* `client_id` - sets the Kafka client id, the default is `nginx`.
-* `compression` - sets the message compression format, the default is `snappy`.
-* `debug` - sets the list of librdkafka debug contexts, a comma separated list.
-* `log_level` - sets the logging level of librdkafka, the default level is 6.
-* `buffer_max_msgs` - maximum number of messages allowed on the producer queue, the default is 100000.
-* `buffer_max_ms` - the delay in milliseconds to wait for messages in the producer queue to accumulate before constructing message batches, the default is 50.
-* `max_retries` - defines how many times to retry sending a failed message set, the default is 0.
-* `backoff_ms` - the back off time in milliseconds before retrying a message send, the default is 10.
+Sets the delimiter between multiple events sent inside a single UDP packet / single TCP connection.
 
 #### aggr_output_kafka
 * **syntax**: `aggr_output_kafka name topic_name [partition=number] [queue_size=number] { ... }`
@@ -255,7 +271,7 @@ The following optional parameters can be specified:
 The block contains the aggregation query that should be applied to the events, see [Aggregation query directives](#aggregation-query-directives) below.
 
 #### aggr_output_file
-* **syntax**: `aggr_output_file file_format [queue_size=number] { ... }`
+* **syntax**: `aggr_output_file file_format [queue_size=number] [delim=str] { ... }`
 * **default**: `-`
 * **context**: `server`
 
@@ -265,6 +281,7 @@ The `file_format` parameter defines the file name, and supports strftime format 
 The following optional parameters can be specified:
 * `queue_size` - the size of queue that the output thread uses to receive events.
     Each slot in the queue holds a bucket of 1 sec, the default queue size is 64.
+* `delim` - sets the delimiter between JSON events, the default delimiter is newline (CR).
 
 The block contains the aggregation query that should be applied to the events, see [Aggregation query directives](#aggregation-query-directives) below.
 
@@ -323,6 +340,91 @@ This directive can be combined with `aggr_static` on the same `location`, the re
 Sets a thread pool that should be used for serving aggregation HTTP queries.
 The thread pool must be defined using the Nginx `thread_pool` directive.
 This directive is supported only on Nginx 1.7.11 or newer when compiling with --add-threads.
+
+#### aggr_input
+* **syntax**: `aggr_input [name=string];`
+* **default**: `-`
+* **context**: `location`
+
+Enables aggregation input on the enclosing `location`.
+The module accepts PUT/POST methods, events are extracted from the body of the incoming requests.
+The module keeps a window of the events received in the last X seconds.
+See [Input event JSON](#input-event-json) below for more details on the required input format.
+
+The optional `name` parameter is required when referencing the events window in directives such as `aggr_static` and `aggr_dynamic`.
+
+#### aggr_input_event_buf_size
+* **syntax**: `aggr_input_event_buf_size size;`
+* **default**: `2k`
+* **context**: `http, server, location`
+
+The size of the temporary buffer used to save input events.
+Events are added to the aggregation window only when they are received in full, in order to avoid collisions between multiple requests posting events to the same window in parallel.
+The temporary buffer is used to save partially received events, and should therefore be large enough to hold the largest event.
+
+#### aggr_input_window
+* **syntax**: `aggr_input_window time;`
+* **default**: `10s`
+* **context**: `http, server, location`
+
+The duration in seconds of the window of events that are kept in memory.
+
+If this parameter is set to 0, events are disposed as soon as they are pushed (e.g. to Kafka).
+In this case, it is not possible to query the events using `aggr_static` and `aggr_dynamic`.
+
+#### aggr_input_buf_size
+* **syntax**: `aggr_input_buf_size size;`
+* **default**: `64k`
+* **context**: `http, server, location`
+
+Sets the size of the buffers used for keeping the events in the window.
+
+#### aggr_input_max_buffers
+* **syntax**: `aggr_input_max_buffers number;`
+* **default**: `4096`
+* **context**: `http, server, location`
+
+Sets the maximum number of buffers that can be allocated per window.
+This parameter can be used to limit the amount of memory allocated by the window (=max_buffers x buf_size).
+If the limit is reached, the module will stop receiving events until some buffers are released.
+
+#### aggr_input_delim
+* **syntax**: `aggr_input_delim char;`
+* **default**: `null (\0)`
+* **context**: `http, server, location`
+
+Sets the delimiter between multiple events sent inside a single HTTP request.
+
+#### aggr_output_kafka
+* **syntax**: `aggr_output_kafka name topic_name [partition=number] [queue_size=number] { ... }`
+* **default**: `-`
+* **context**: `location`
+
+Adds a Kafka output to the enclosing `location`.
+The `name` parameter must point to a Kafka connection created using the `kafka_producer` directive.
+The `topic_name` parameter specifies the Kafka topic to which the aggregated events will be written.
+
+The following optional parameters can be specified:
+* `partition` - can be used to write to a specific partition, by default the module will write to a random partition.
+* `queue_size` - the size of queue that the output thread uses to receive events.
+    Each slot in the queue holds a bucket of 1 sec, the default queue size is 64.
+
+The block contains the aggregation query that should be applied to the events, see [Aggregation query directives](#aggregation-query-directives) below.
+
+#### aggr_output_file
+* **syntax**: `aggr_output_file file_format [queue_size=number] [delim=str] { ... }`
+* **default**: `-`
+* **context**: `location`
+
+Adds a gzip file output to the enclosing `location`. Each line in the output files generated by this directive is an aggregated JSON event.
+The `file_format` parameter defines the file name, and supports strftime format specifiers (for example, %Y = year incl. century).
+
+The following optional parameters can be specified:
+* `queue_size` - the size of queue that the output thread uses to receive events.
+    Each slot in the queue holds a bucket of 1 sec, the default queue size is 64.
+* `delim` - sets the delimiter between JSON events, the default delimiter is newline (CR).
+
+The block contains the aggregation query that should be applied to the events, see [Aggregation query directives](#aggregation-query-directives) below.
 
 ### Aggregation query directives
 
@@ -552,7 +654,8 @@ If multiple filters are defined in the block, their results are AND'ed before ap
 
 ### Requirements
 
-* When using TCP, input events must be separated by `\0`. When using UDP, multiple events can be sent in a single UDP packet by delimiting them with `\0`.
+* When using TCP/HTTP, input events must be separated by the configured delimiter (`\0` by default).
+    When using UDP, multiple events can be sent in a single UDP packet separated by the configured delimiter (`\0` by default).
 * Each event must be a flat JSON object, containing only simple types - nested objects/arrays are not supported.
 * Keys used as dimensions must have a string value, while keys used as metrics must have a number value.
 * By default, the module does not support spaces in the JSON (other than spaces contained in string values).

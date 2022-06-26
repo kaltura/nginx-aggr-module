@@ -18,6 +18,7 @@ typedef struct {
 #define NGX_AGGR_MAIN_CONF        0x02000000
 #define NGX_AGGR_FILTER_CONF      0x04000000
 #define NGX_AGGR_HAVING_CONF      0x08000000
+#define NGX_AGGR_GLOBAL_CONF      0x10000000
 
 #define NGX_AGGR_MAIN_CONF_OFFSET                                             \
     offsetof(ngx_aggr_query_init_t, main_conf)

@@ -72,13 +72,17 @@ ngx_aggr_event_alloc(ngx_aggr_result_t *ar)
 static int
 ngx_aggr_event_compare(ngx_aggr_event_t *event1, ngx_aggr_event_t *event2)
 {
-    size_t      off;
-    ngx_str_t  *s1, *s2;
+    size_t       off;
+    ngx_str_t   *s1, *s2;
+    ngx_str_t  **s1p, **s2p;
 
     for (off = 0; off < event1->group_size; off += sizeof(s1)) {
 
-        s1 = *(ngx_str_t **) (event1->data + off);
-        s2 = *(ngx_str_t **) (event2->data + off);
+        s1p = (ngx_str_t **) (event1->data + off);
+        s2p = (ngx_str_t **) (event2->data + off);
+
+        s1 = *s1p;
+        s2 = *s2p;
 
         /* Note: dims are from string table, can just compare the ptrs */
         if (s1 < s2) {
@@ -514,6 +518,7 @@ ngx_aggr_event_json_parse(ngx_aggr_event_json_ctx_t *ctx,
     double                        *dst_dbl;
     double                         metric_value;
     ngx_str_t                     *dim_value;
+    ngx_str_t                    **dim_valuep;
     ngx_uint_t                     i;
     ngx_array_t                   *outputs;
     ngx_str_hash_t                 sh;
@@ -679,7 +684,8 @@ done:
             return NGX_ERROR;
         }
 
-        *(ngx_str_t **) (event->data + dst_offset) = dim_value;
+        dim_valuep = (ngx_str_t **) (event->data + dst_offset);
+        *dim_valuep = dim_value;
 
         event->node.key ^= (ngx_uint_t) dim_value;
     }
@@ -691,10 +697,11 @@ done:
 static ngx_int_t
 ngx_aggr_event_copy_select_dims(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
 {
-    ngx_str_t       *dim_value;
-    ngx_uint_t       dst_offset;
-    ngx_uint_t       temp_offset;
-    ngx_str_hash_t  *shp;
+    ngx_str_t        *dim_value;
+    ngx_str_t       **dim_valuep;
+    ngx_uint_t        dst_offset;
+    ngx_uint_t        temp_offset;
+    ngx_str_hash_t   *shp;
 
     dst_offset = ar->group_size;
     temp_offset = dst_offset / sizeof(ngx_str_t *) * sizeof(ngx_str_hash_t);
@@ -709,7 +716,8 @@ ngx_aggr_event_copy_select_dims(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
             return NGX_ERROR;
         }
 
-        *(ngx_str_t **) (event->data + dst_offset) = dim_value;
+        dim_valuep = (ngx_str_t **) (event->data + dst_offset);
+        *dim_valuep = dim_value;
     }
 
     return NGX_OK;
@@ -807,11 +815,12 @@ ngx_aggr_event_json_parse_error(ngx_aggr_event_json_ctx_t *ctx, ngx_log_t *log,
 static size_t
 ngx_aggr_event_dim_size(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
 {
-    size_t                     size;
-    ngx_str_t                 *str_val;
-    ngx_uint_t                 i, n;
-    ngx_aggr_query_t          *query;
-    ngx_aggr_query_dim_out_t  *dims;
+    size_t                      size;
+    ngx_str_t                  *str_val;
+    ngx_str_t                 **str_valp;
+    ngx_uint_t                  i, n;
+    ngx_aggr_query_t           *query;
+    ngx_aggr_query_dim_out_t   *dims;
 
     query = ar->query;
 
@@ -820,7 +829,9 @@ ngx_aggr_event_dim_size(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
 
     size = 0;
     for (i = 0; i < n; i++) {
-        str_val = *(ngx_str_t **) (event->data + dims[i].offset);
+        str_valp = (ngx_str_t **) (event->data + dims[i].offset);
+
+        str_val = *str_valp;
         if (str_val == NULL) {
             continue;
         }
@@ -843,13 +854,15 @@ static u_char *
 ngx_aggr_event_json_write(u_char *p, ngx_aggr_result_t *ar,
     ngx_aggr_event_t *event)
 {
-    double                        dbl_val;
-    ngx_str_t                    *key;
-    ngx_str_t                    *str_val;
-    ngx_uint_t                    i, n;
-    ngx_aggr_query_t             *query;
-    ngx_aggr_query_dim_out_t     *dims;
-    ngx_aggr_query_metric_out_t  *metrics;
+    double                         dbl_val;
+    double                        *dbl_valp;
+    ngx_str_t                     *key;
+    ngx_str_t                     *str_val;
+    ngx_str_t                    **str_valp;
+    ngx_uint_t                     i, n;
+    ngx_aggr_query_t              *query;
+    ngx_aggr_query_dim_out_t      *dims;
+    ngx_aggr_query_metric_out_t   *metrics;
 
     query = ar->query;
 
@@ -870,7 +883,9 @@ ngx_aggr_event_json_write(u_char *p, ngx_aggr_result_t *ar,
     n = query->dims_out.nelts;
 
     for (i = 0; i < n; i++) {
-        str_val = *(ngx_str_t **) (event->data + dims[i].offset);
+        str_valp = (ngx_str_t **) (event->data + dims[i].offset);
+
+        str_val = *str_valp;
         if (str_val == NULL) {
             continue;
         }
@@ -897,7 +912,8 @@ ngx_aggr_event_json_write(u_char *p, ngx_aggr_result_t *ar,
         *p++ = '"';
         *p++ = ':';
 
-        dbl_val = *(double *) (event->data + metrics[i].offset);
+        dbl_valp = (double *) (event->data + metrics[i].offset);
+        dbl_val = *dbl_valp;
 
         /* not using ngx_sprintf since it supports only fixed precision */
         p += snprintf((char *) p, NGX_AGGR_QUERY_DOUBLE_LEN,
@@ -938,14 +954,16 @@ static u_char *
 ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
     ngx_aggr_event_t *event)
 {
-    u_char                       *start;
-    double                        dbl_val;
-    ngx_str_t                    *key;
-    ngx_str_t                    *str_val;
-    ngx_uint_t                    i, j;
-    ngx_aggr_query_t             *query;
-    ngx_aggr_query_dim_out_t     *dims;
-    ngx_aggr_query_metric_out_t  *metrics;
+    u_char                        *start;
+    double                         dbl_val;
+    double                        *dbl_valp;
+    ngx_str_t                     *key;
+    ngx_str_t                     *str_val;
+    ngx_str_t                    **str_valp;
+    ngx_uint_t                     i, j;
+    ngx_aggr_query_t              *query;
+    ngx_aggr_query_dim_out_t      *dims;
+    ngx_aggr_query_metric_out_t   *metrics;
 
     query = ar->query;
     dims = query->dims_out.elts;
@@ -961,7 +979,9 @@ ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
             start = p;
 
             for (j = 0; j < query->dims_out.nelts; j++) {
-                str_val = *(ngx_str_t **) (event->data + dims[j].offset);
+                str_valp = (ngx_str_t **) (event->data + dims[j].offset);
+
+                str_val = *str_valp;
                 if (str_val == NULL) {
                     continue;
                 }
@@ -986,7 +1006,8 @@ ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
 
         *p++ = ' ';
 
-        dbl_val = *(double *) (event->data + metrics[i].offset);
+        dbl_valp = (double *) (event->data + metrics[i].offset);
+        dbl_val = *dbl_valp;
 
         /* not using ngx_sprintf since it supports only fixed precision */
         p += snprintf((char *) p, NGX_AGGR_QUERY_DOUBLE_LEN,
@@ -1104,7 +1125,9 @@ static ngx_aggr_event_t **
 ngx_aggr_result_get_top(ngx_aggr_result_t *ar, ngx_uint_t *cnt)
 {
     double              cur;
+    double             *curp;
     double              value;
+    double             *valuep;
     ngx_uint_t          insert;
     ngx_uint_t          count;
     ngx_uint_t          top_offset;
@@ -1137,10 +1160,12 @@ ngx_aggr_result_get_top(ngx_aggr_result_t *ar, ngx_uint_t *cnt)
             }
         }
 
-        value = *(double *) (event->data + top_offset);
+        valuep = (double *) (event->data + top_offset);
+        value = *valuep;
 
         for (insert = count; insert > 0; insert--) {
-            cur = *(double *) (top[insert - 1]->data + top_offset);
+            curp = (double *) (top[insert - 1]->data + top_offset);
+            cur = *curp;
             if (!query->top_inverted) {
                 if (value <= cur) {
                     break;

@@ -14,7 +14,6 @@ AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr.h                      \
                 $ngx_addon_dir/src/ngx_aggr_variables.h            \
                 $ngx_addon_dir/src/ngx_aggr_window.h               \
                 $ngx_addon_dir/src/ngx_dgram.h                     \
-                $ngx_addon_dir/src/ngx_dgram_aggr_module.h         \
                 $ngx_addon_dir/src/ngx_dgram_script.h              \
                 $ngx_addon_dir/src/ngx_dgram_variables.h           \
                 $ngx_addon_dir/src/ngx_json_parser.h               \
@@ -22,7 +21,8 @@ AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr.h                      \
                 $ngx_addon_dir/src/ngx_str_table.h                 \
                 "
 
-AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr_map.c                  \
+AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr.c                      \
+                $ngx_addon_dir/src/ngx_aggr_map.c                  \
                 $ngx_addon_dir/src/ngx_aggr_map_metric.c           \
                 $ngx_addon_dir/src/ngx_aggr_filter.c               \
                 $ngx_addon_dir/src/ngx_aggr_output.c               \
@@ -40,7 +40,9 @@ AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr_map.c                  \
                 $ngx_addon_dir/src/ngx_str_table.c                 \
                 "
 
-AGGR_CORE_MODS="ngx_aggr_filter_module                             \
+AGGR_CORE_MODS="ngx_aggr_module                                    \
+                ngx_aggr_output_module                             \
+                ngx_aggr_filter_module                             \
                 ngx_aggr_map_module                                \
                 ngx_aggr_map_metric_module                         \
                 ngx_aggr_query_module                              \
@@ -52,9 +54,11 @@ AGGR_CORE_MODS="ngx_aggr_filter_module                             \
 AGGR_HTTP_DEPS=
 
 AGGR_HTTP_SRCS="$ngx_addon_dir/src/ngx_http_aggr_module.c          \
+                $ngx_addon_dir/src/ngx_http_aggr_input_module.c    \
                 "
 
 AGGR_HTTP_MODS="ngx_http_aggr_module                               \
+                ngx_http_aggr_input_module                         \
                 "
 
 
