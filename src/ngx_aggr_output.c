@@ -10,10 +10,17 @@
 #include "ngx_aggr_output.h"
 
 
+static void *ngx_aggr_outputs_create_conf(ngx_cycle_t *cycle);
+
+static ngx_int_t ngx_aggr_outputs_start(ngx_cycle_t *cycle);
+static void ngx_aggr_outputs_close(ngx_cycle_t *cycle);
+
+
 typedef void (*ngx_aggr_output_poll_pt)(void *data);
 
 typedef ngx_int_t (*ngx_aggr_output_init_pt)(void *data, ngx_log_t *log,
     time_t t);
+
 typedef void (*ngx_aggr_output_close_pt)(void *data);
 
 
@@ -41,8 +48,37 @@ typedef struct {
 
 typedef struct {
     ngx_str_t                     path_format;
+    ngx_str_t                     delim;
     gzFile                        file;
 } ngx_aggr_output_file_ctx_t;
+
+
+typedef struct {
+    ngx_queue_t                   queue;   /* ngx_aggr_outputs_arr_t */
+} ngx_aggr_outputs_conf_t;
+
+
+static ngx_core_module_t  ngx_aggr_output_module_ctx = {
+    ngx_string("aggr_output"),
+    ngx_aggr_outputs_create_conf,
+    NULL
+};
+
+
+ngx_module_t  ngx_aggr_output_module = {
+    NGX_MODULE_V1,
+    &ngx_aggr_output_module_ctx,           /* module context */
+    NULL,                                  /* module directives */
+    NGX_CORE_MODULE,                       /* module type */
+    NULL,                                  /* init master */
+    NULL,                                  /* init module */
+    ngx_aggr_outputs_start,                /* init process */
+    NULL,                                  /* init thread */
+    NULL,                                  /* exit thread */
+    ngx_aggr_outputs_close,                /* exit process */
+    NULL,                                  /* exit master */
+    NGX_MODULE_V1_PADDING
+};
 
 
 static ngx_atomic_t   aggr_threads = 0;
@@ -251,8 +287,10 @@ ngx_aggr_output_thread_init(ngx_log_t *log, ngx_aggr_output_ctx_t *output)
 
 
 ngx_int_t
-ngx_aggr_outputs_init(ngx_conf_t *cf, ngx_aggr_outputs_conf_t *conf)
+ngx_aggr_outputs_init(ngx_conf_t *cf, ngx_aggr_outputs_arr_t *conf)
 {
+    ngx_aggr_outputs_conf_t  *ocf;
+
     if (ngx_array_init(&conf->outputs, cf->pool, 1,
                        sizeof(ngx_aggr_output_ctx_t))
         != NGX_OK)
@@ -260,12 +298,16 @@ ngx_aggr_outputs_init(ngx_conf_t *cf, ngx_aggr_outputs_conf_t *conf)
         return NGX_ERROR;
     }
 
+    ocf = (void *) ngx_get_conf(cf->cycle->conf_ctx, ngx_aggr_output_module);
+
+    ngx_queue_insert_tail(&ocf->queue, &conf->queue);
+
     return NGX_OK;
 }
 
 
 static ngx_aggr_output_ctx_t *
-ngx_aggr_outputs_add(ngx_conf_t *cf, ngx_aggr_outputs_conf_t *conf,
+ngx_aggr_outputs_add(ngx_conf_t *cf, ngx_aggr_outputs_arr_t *conf,
     ngx_aggr_output_conf_t *output_conf)
 {
     ngx_aggr_output_ctx_t  *output;
@@ -295,7 +337,7 @@ ngx_aggr_outputs_add(ngx_conf_t *cf, ngx_aggr_outputs_conf_t *conf,
 
 
 void
-ngx_aggr_outputs_push(ngx_aggr_outputs_conf_t *conf, ngx_aggr_bucket_t *bucket)
+ngx_aggr_outputs_push(ngx_aggr_outputs_arr_t *conf, ngx_aggr_bucket_t *bucket)
 {
     ngx_uint_t              i, n;
     ngx_aggr_output_ctx_t  *elts;
@@ -309,18 +351,30 @@ ngx_aggr_outputs_push(ngx_aggr_outputs_conf_t *conf, ngx_aggr_bucket_t *bucket)
 }
 
 
-ngx_int_t
-ngx_aggr_outputs_start(ngx_log_t *log, ngx_aggr_outputs_conf_t *conf)
+static ngx_int_t
+ngx_aggr_outputs_start(ngx_cycle_t *cycle)
 {
-    ngx_uint_t              i, n;
-    ngx_aggr_output_ctx_t  *elts;
+    ngx_uint_t                i, n;
+    ngx_queue_t              *q;
+    ngx_aggr_output_ctx_t    *elts;
+    ngx_aggr_outputs_arr_t   *conf;
+    ngx_aggr_outputs_conf_t  *ocf;
 
-    n = conf->outputs.nelts;
-    elts = conf->outputs.elts;
+    ocf = (void *) ngx_get_conf(cycle->conf_ctx, ngx_aggr_output_module);
 
-    for (i = 0; i < n; i++) {
-        if (ngx_aggr_output_thread_init(log, &elts[i]) != NGX_OK) {
-            return NGX_ERROR;
+    for (q = ngx_queue_head(&ocf->queue);
+        q != ngx_queue_sentinel(&ocf->queue);
+        q = ngx_queue_next(q))
+    {
+        conf = ngx_queue_data(q, ngx_aggr_outputs_arr_t, queue);
+
+        n = conf->outputs.nelts;
+        elts = conf->outputs.elts;
+
+        for (i = 0; i < n; i++) {
+            if (ngx_aggr_output_thread_init(conf->log, &elts[i]) != NGX_OK) {
+                return NGX_ERROR;
+            }
         }
     }
 
@@ -328,7 +382,7 @@ ngx_aggr_outputs_start(ngx_log_t *log, ngx_aggr_outputs_conf_t *conf)
 }
 
 
-void
+static void
 ngx_aggr_outputs_close(ngx_cycle_t *cycle)
 {
     ngx_uint_t  i;
@@ -346,6 +400,22 @@ ngx_aggr_outputs_close(ngx_cycle_t *cycle)
 
     ngx_log_error(NGX_LOG_ALERT, cycle->log, 0,
         "ngx_aggr_outputs_close: timed out waiting for threads to quit");
+}
+
+
+static void *
+ngx_aggr_outputs_create_conf(ngx_cycle_t *cycle)
+{
+    ngx_aggr_outputs_conf_t  *ocf;
+
+    ocf = ngx_pcalloc(cycle->pool, sizeof(ngx_aggr_outputs_conf_t));
+    if (ocf == NULL) {
+        return NULL;
+    }
+
+    ngx_queue_init(&ocf->queue);
+
+    return ocf;
 }
 
 
@@ -383,7 +453,7 @@ ngx_aggr_output_file_write(void *data, void *buf, size_t len, void *free_ctx)
     ngx_aggr_output_file_ctx_t  *ctx = data;
 
     gzwrite(ctx->file, buf, len);
-    gzwrite(ctx->file, "\n", 1);
+    gzwrite(ctx->file, ctx->delim.data, ctx->delim.len);
 
     ngx_aggr_result_send_buf_free(free_ctx);
 }
@@ -406,14 +476,15 @@ ngx_aggr_output_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     char                        *rv;
     ngx_str_t                   *value;
+    ngx_uint_t                   i;
     ngx_aggr_output_ctx_t       *output;
     ngx_aggr_output_conf_t       output_conf;
-    ngx_aggr_outputs_conf_t     *ocf;
+    ngx_aggr_outputs_arr_t      *ocf;
     ngx_aggr_output_file_ctx_t  *ctx;
 
     value = cf->args->elts;
 
-    ocf = (ngx_aggr_outputs_conf_t *) (p + cmd->offset);
+    ocf = (ngx_aggr_outputs_arr_t *) (p + cmd->offset);
 
     rv = ngx_aggr_output_init_conf(cf, &output_conf, 1);
     if (rv != NGX_CONF_OK) {
@@ -426,6 +497,21 @@ ngx_aggr_output_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     ctx->path_format = value[1];
+    ngx_str_set(&ctx->delim, "\n");
+
+    for (i = 2; i < cf->args->nelts; i++) {
+
+        if (ngx_strncmp(value[i].data, "delim=", 6) == 0) {
+            ctx->delim.data = value[i].data + 6;
+            ctx->delim.len = value[i].len - 6;
+            continue;
+        }
+
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid parameter \"%V\"", &value[i]);
+        return NGX_CONF_ERROR;
+    }
+
 
     output = ngx_aggr_outputs_add(cf, ocf, &output_conf);
     if (output == NULL) {
@@ -451,10 +537,10 @@ ngx_aggr_output_kafka(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_command_t                empty_cmd;
     ngx_aggr_output_ctx_t       *output;
     ngx_aggr_output_conf_t       output_conf;
-    ngx_aggr_outputs_conf_t     *ocf;
+    ngx_aggr_outputs_arr_t      *ocf;
     ngx_kafka_producer_topic_t  *kpt;
 
-    ocf = (ngx_aggr_outputs_conf_t *) (p + cmd->offset);
+    ocf = (ngx_aggr_outputs_arr_t *) (p + cmd->offset);
 
     rv = ngx_aggr_output_init_conf(cf, &output_conf, 2);
     if (rv != NGX_CONF_OK) {

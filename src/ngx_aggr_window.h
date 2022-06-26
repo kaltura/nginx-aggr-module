@@ -28,6 +28,7 @@ typedef struct {
     size_t              buf_size;
     ngx_uint_t          max_buffers;
     size_t              recv_size;
+    ngx_int_t           delim;
     ngx_aggr_window_t  *window;
 } ngx_aggr_window_conf_t;
 
@@ -59,8 +60,13 @@ ngx_aggr_window_t *ngx_aggr_window_create(ngx_pool_t *pool,
 ngx_int_t ngx_aggr_window_get_recv_buf(ngx_aggr_window_t *window,
     ngx_aggr_buf_t **result);
 
+ngx_int_t ngx_aggr_window_write(ngx_aggr_window_t *window, u_char *p,
+    u_char *last);
+
 ngx_int_t ngx_aggr_window_process(ngx_aggr_window_t *window, ngx_pool_t *pool,
     ngx_aggr_result_t *ar);
 
+
+char *ngx_conf_set_char_slot(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 #endif /* _NGX_AGGR_WINDOW_H_INCLUDED_ */

@@ -63,7 +63,7 @@ ngx_module_t  ngx_aggr_module = {
     NULL,                                  /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
-    ngx_aggr_outputs_close,                /* exit process */
+    NULL,                                  /* exit process */
     NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };
