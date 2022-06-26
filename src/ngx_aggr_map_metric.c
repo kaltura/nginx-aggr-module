@@ -77,6 +77,7 @@ ngx_aggr_map_metric_variable(ngx_aggr_result_t *ar,
     ngx_aggr_map_metric_ctx_t  *map = (ngx_aggr_map_metric_ctx_t *) data;
 
     double                      metric;
+    double                     *metricp;
     ngx_int_t                   left, right, index;
     ngx_str_t                   str;
     ngx_aggr_event_t           *event;
@@ -85,7 +86,8 @@ ngx_aggr_map_metric_variable(ngx_aggr_result_t *ar,
     ngx_aggr_map_metric_elt_t  *elt;
 
     event = ar->cur;
-    metric = *(double *) (event->data + map->offset);
+    metricp = (double *) (event->data + map->offset);
+    metric = *metricp;
 
     /* binary search for 'metric' */
     left = 0;

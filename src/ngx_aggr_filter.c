@@ -300,10 +300,12 @@ static ngx_flag_t
 ngx_aggr_filter_gt(ngx_aggr_result_t *ar, void *data)
 {
     double                      value;
+    double                     *valuep;
     ngx_aggr_filter_compare_t  *filter;
 
     filter = data;
-    value = *(double *) (ar->cur->data + filter->offset);
+    valuep = (double *) (ar->cur->data + filter->offset);
+    value = *valuep;
 
     return value > filter->value;
 }
@@ -313,10 +315,12 @@ static ngx_flag_t
 ngx_aggr_filter_lt(ngx_aggr_result_t *ar, void *data)
 {
     double                      value;
+    double                     *valuep;
     ngx_aggr_filter_compare_t  *filter;
 
     filter = data;
-    value = *(double *) (ar->cur->data + filter->offset);
+    valuep = (double *) (ar->cur->data + filter->offset);
+    value = *valuep;
 
     return value < filter->value;
 }
@@ -326,10 +330,12 @@ static ngx_flag_t
 ngx_aggr_filter_gte(ngx_aggr_result_t *ar, void *data)
 {
     double                      value;
+    double                     *valuep;
     ngx_aggr_filter_compare_t  *filter;
 
     filter = data;
-    value = *(double *) (ar->cur->data + filter->offset);
+    valuep = (double *) (ar->cur->data + filter->offset);
+    value = *valuep;
 
     return value >= filter->value;
 }
@@ -339,10 +345,12 @@ static ngx_flag_t
 ngx_aggr_filter_lte(ngx_aggr_result_t *ar, void *data)
 {
     double                      value;
+    double                     *valuep;
     ngx_aggr_filter_compare_t  *filter;
 
     filter = data;
-    value = *(double *) (ar->cur->data + filter->offset);
+    valuep = (double *) (ar->cur->data + filter->offset);
+    value = *valuep;
 
     return value <= filter->value;
 }
