@@ -179,23 +179,24 @@ ngx_aggr_result_temp_alloc(ngx_aggr_result_t *ar, size_t size)
     u_char  *p;
     size_t   alloc_size;
 
-    if (size > (size_t) (ar->var_temp.end - ar->var_temp.last)) {
+    p = ar->var_temp.last;
+
+    if (size > (size_t) (ar->var_temp.end - p) || !p) {
         alloc_size = ar->var_temp.end - ar->var_temp.start;
         alloc_size *= 2;
         if (alloc_size < size) {
             alloc_size = size;
         }
 
-        ar->var_temp.start = ngx_pnalloc(ar->pool, alloc_size);
-        if (ar->var_temp.start == NULL) {
+        p = ngx_pnalloc(ar->pool, alloc_size);
+        if (p == NULL) {
             return NULL;
         }
 
-        ar->var_temp.last = ar->var_temp.start;
-        ar->var_temp.end = ar->var_temp.start + alloc_size;
+        ar->var_temp.start = ar->var_temp.last = p;
+        ar->var_temp.end = p + alloc_size;
     }
 
-    p = ar->var_temp.last;
     ar->var_temp.last += size;
 
     return p;
