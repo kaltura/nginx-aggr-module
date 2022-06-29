@@ -159,7 +159,7 @@ ngx_dgram_aggr_input_handler(ngx_dgram_session_t *s)
 
         recv_buf = buf->last;
 
-        n = ngx_dgram_recv(c, recv_buf, buf->end - buf->last - 1);
+        n = ngx_dgram_recv(c, recv_buf, buf->end - buf->last);
         if (n <= 0) {
             switch (n) {
 

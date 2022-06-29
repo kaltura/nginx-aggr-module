@@ -345,11 +345,13 @@ ngx_aggr_window_get_recv_buf(ngx_aggr_window_t *window,
     }
 
     buf = window->buf;
-    if (buf != NULL &&
-        (size_t) (buf->end - buf->last) > window->conf.recv_size)
-    {
-        *result = buf;
-        return NGX_OK;
+    if (buf != NULL) {
+        if ((size_t) (buf->end - buf->last) > window->conf.recv_size) {
+            *result = buf;
+            return NGX_OK;
+        }
+
+        *buf->last = '\0';
     }
 
     ngx_spinlock(&window->lock, 1, 2048);
@@ -378,8 +380,8 @@ ngx_aggr_window_get_recv_buf(ngx_aggr_window_t *window,
             return NGX_ERROR;
         }
 
-        buf->start = (void *)(buf + 1);
-        buf->end = buf->start + window->conf.buf_size;
+        buf->start = (void *) (buf + 1);
+        buf->end = buf->start + window->conf.buf_size - 1;  /* room for null */
     }
 
     buf->last = buf->start;
