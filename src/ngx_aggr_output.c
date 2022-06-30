@@ -32,12 +32,13 @@ typedef struct {
 typedef struct {
     ngx_aggr_query_t             *query;
     ngx_uint_t                    queue_size;
-    ngx_log_t                    *log;
+    ngx_log_t                     log;
 
     ngx_aggr_bucket_t           **queue;
     volatile ngx_uint_t           read_pos;
     volatile ngx_uint_t           write_pos;
 
+    ngx_log_handler_pt            log_error;
     ngx_aggr_output_poll_pt       poll;
     ngx_aggr_output_init_pt       init;
     ngx_aggr_event_send_pt        handler;
@@ -133,7 +134,7 @@ ngx_aggr_output_push(ngx_aggr_output_ctx_t *output, ngx_aggr_bucket_t *bucket)
 
     next_pos = (output->write_pos + 1) % output->queue_size;
     if (next_pos == output->read_pos) {
-        ngx_log_error(NGX_LOG_ERR, output->log, 0,
+        ngx_log_error(NGX_LOG_ERR, &output->log, 0,
             "ngx_aggr_output_push: bucket queue full");
         return;
     }
@@ -154,7 +155,7 @@ ngx_aggr_output_send(ngx_aggr_output_ctx_t *output, ngx_aggr_result_t *ar,
     ngx_int_t  rc;
 
     if (output->init) {
-        if (output->init(output->data, output->log, t) != NGX_OK) {
+        if (output->init(output->data, &output->log, t) != NGX_OK) {
             return NGX_ERROR;
         }
     }
@@ -182,7 +183,7 @@ ngx_aggr_output_cycle(void *data)
 
     (void) ngx_atomic_fetch_add(ngx_aggr_threads, 1);
 
-    ngx_log_debug0(NGX_LOG_DEBUG_CORE, output->log, 0,
+    ngx_log_error(NGX_LOG_INFO, &output->log, 0,
         "ngx_aggr_output_cycle: thread started");
 
     query = output->query;
@@ -212,8 +213,8 @@ ngx_aggr_output_cycle(void *data)
 
         if (last_period != period) {
 
-            new_ar = ngx_aggr_result_create(query, period * granularity,
-                ar);
+            new_ar = ngx_aggr_result_create(query, &output->log,
+                period * granularity, ar);
             if (new_ar == NULL) {
                 break;
             }
@@ -239,7 +240,7 @@ ngx_aggr_output_cycle(void *data)
         ngx_aggr_result_destroy(ar);
     }
 
-    ngx_log_debug0(NGX_LOG_DEBUG_CORE, output->log, 0,
+    ngx_log_error(NGX_LOG_INFO, &output->log, 0,
         "ngx_aggr_output_cycle: thread done");
 
     (void) ngx_atomic_fetch_add(ngx_aggr_threads, -1);
@@ -270,7 +271,11 @@ ngx_aggr_output_thread_init(ngx_log_t *log, ngx_aggr_output_ctx_t *output)
         return NGX_ERROR;
     }
 
-    output->log = log;
+    output->log = *log;
+    if (output->log_error) {
+        output->log.handler = output->log_error;
+        output->log.data = output->data;
+    }
 
     err = pthread_create(&tid, &attr, ngx_aggr_output_cycle, output);
     if (err) {
@@ -419,6 +424,22 @@ ngx_aggr_outputs_create_conf(ngx_cycle_t *cycle)
 }
 
 
+static u_char *
+ngx_aggr_output_file_log_error(ngx_log_t *log, u_char *buf, size_t len)
+{
+    u_char                      *p;
+    ngx_aggr_output_file_ctx_t  *ctx;
+
+    p = buf;
+
+    ctx = log->data;
+
+    p = ngx_snprintf(buf, len, ", path_format: %V", &ctx->path_format);
+
+    return p;
+}
+
+
 static ngx_int_t
 ngx_aggr_output_file_init(void *data, ngx_log_t *log, time_t t)
 {
@@ -518,6 +539,7 @@ ngx_aggr_output_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
+    output->log_error = ngx_aggr_output_file_log_error;
     output->init = ngx_aggr_output_file_init;
     output->handler = ngx_aggr_output_file_write;
     output->close = ngx_aggr_output_file_close;
@@ -561,6 +583,7 @@ ngx_aggr_output_kafka(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
+    output->log_error = ngx_kafka_producer_topic_log_error;
     output->poll = (ngx_aggr_output_poll_pt) ngx_kafka_producer_topic_poll;
     output->handler = (ngx_aggr_event_send_pt)
         ngx_kafka_producer_topic_produce;

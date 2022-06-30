@@ -16,6 +16,7 @@ struct ngx_aggr_bucket_s {
 
 struct ngx_aggr_window_s {
     ngx_pool_t                   *pool;
+    ngx_log_t                     log;
     ngx_aggr_window_conf_t        conf;
 
     ngx_aggr_bucket_handler_pt    handler;
@@ -291,6 +292,22 @@ ngx_aggr_window_detach(void *data)
 }
 
 
+static u_char *
+ngx_aggr_window_log_error(ngx_log_t *log, u_char *buf, size_t len)
+{
+    u_char             *p;
+    ngx_aggr_window_t  *window;
+
+    p = buf;
+
+    window = log->data;
+
+    p = ngx_snprintf(buf, len, ", window_name: %V", &window->conf.name);
+
+    return p;
+}
+
+
 ngx_aggr_window_t *
 ngx_aggr_window_create(ngx_pool_t *pool, ngx_aggr_window_conf_t *conf,
     ngx_aggr_bucket_handler_pt handler, void *data)
@@ -317,6 +334,10 @@ ngx_aggr_window_create(ngx_pool_t *pool, ngx_aggr_window_conf_t *conf,
     window->pool = pool;
     window->conf = *conf;
     window->bufs_left = conf->max_buffers;
+
+    window->log = *pool->log;
+    window->log.handler = ngx_aggr_window_log_error;
+    window->log.data = window;
 
     window->handler = handler;
     window->data = data;
@@ -370,7 +391,7 @@ ngx_aggr_window_get_recv_buf(ngx_aggr_window_t *window,
 
     if (buf == NULL) {
         if (window->bufs_left <= 0) {
-            ngx_log_error(NGX_LOG_ERR, window->pool->log, 0,
+            ngx_log_error(NGX_LOG_ERR, &window->log, 0,
                 "ngx_aggr_window_get_recv_buf: no free bufs");
             return NGX_AGAIN;
         }

@@ -64,8 +64,8 @@ typedef void (*ngx_aggr_event_send_pt)(void *data, void *buf, size_t len,
     void *free_ctx);
 
 
-ngx_aggr_result_t *ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
-    ngx_aggr_result_t *prev);
+ngx_aggr_result_t *ngx_aggr_result_create(ngx_aggr_query_t *query,
+    ngx_log_t *log, time_t t, ngx_aggr_result_t *prev);
 
 void ngx_aggr_result_destroy(ngx_aggr_result_t *ar);
 

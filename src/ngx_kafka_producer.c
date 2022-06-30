@@ -716,6 +716,23 @@ ngx_kafka_producer_topic_poll(ngx_kafka_producer_topic_t *kpt)
 }
 
 
+u_char *
+ngx_kafka_producer_topic_log_error(ngx_log_t *log, u_char *buf, size_t len)
+{
+    u_char                      *p;
+    ngx_kafka_producer_topic_t  *kpt;
+
+    p = buf;
+
+    kpt = log->data;
+
+    p = ngx_snprintf(buf, len, ", kafka: %V, topic: %V",
+        &kpt->kp->name, &kpt->name);
+
+    return p;
+}
+
+
 void
 ngx_kafka_producer_topic_produce(ngx_kafka_producer_topic_t *kpt,
     void *buf, size_t len, void *free_ctx)
