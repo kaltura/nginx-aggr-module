@@ -1021,14 +1021,14 @@ ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,
 
 
 ngx_aggr_result_t *
-ngx_aggr_result_create(ngx_aggr_query_t *query, time_t t,
+ngx_aggr_result_create(ngx_aggr_query_t *query, ngx_log_t *log, time_t t,
     ngx_aggr_result_t *prev)
 {
     ngx_tm_t            gmt;
     ngx_pool_t         *pool;
     ngx_aggr_result_t  *ar;
 
-    pool = ngx_create_pool(2024, ngx_cycle->log);
+    pool = ngx_create_pool(2048, log);
     if (pool == NULL) {
         return NULL;
     }

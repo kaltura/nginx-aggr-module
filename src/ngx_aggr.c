@@ -19,6 +19,12 @@ typedef struct {
 } ngx_aggr_conf_t;
 
 
+typedef struct {
+    ngx_str_t               *window_name;
+    ngx_log_t               *log;
+} ngx_aggr_log_ctx_t;
+
+
 static ngx_command_t  ngx_aggr_commands[] = {
 
     { ngx_string("aggr"),
@@ -161,27 +167,60 @@ ngx_aggr_add_window(ngx_conf_t *cf, ngx_str_t *name,
 }
 
 
+static u_char *
+ngx_aggr_log_error(ngx_log_t *log, u_char *buf, size_t len)
+{
+    u_char              *p;
+    ngx_aggr_log_ctx_t  *ctx;
+
+    ctx = log->data;
+
+    p = buf;
+
+    p = ngx_snprintf(buf, len, ", window_name: %V", ctx->window_name);
+    len -= p - buf;
+    buf = p;
+
+    log = ctx->log;
+    if (log->handler) {
+        p = log->handler(log, buf, len);
+    }
+
+    return p;
+}
+
+
 ngx_chain_t **
 ngx_aggr_query(ngx_pool_t *pool, ngx_cycle_t *cycle, ngx_str_t *name,
     ngx_aggr_query_t *query, ngx_chain_t **last, off_t *size)
 {
+    ngx_log_t                log;
     ngx_uint_t               key;
     ngx_aggr_conf_t         *acf;
     ngx_aggr_result_t       *ar;
+    ngx_aggr_log_ctx_t       log_ctx;
     ngx_aggr_window_conf_t  *conf;
 
     acf = (ngx_aggr_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_aggr_module);
+
+    log = *pool->log;
+
+    log_ctx.window_name = name;
+    log_ctx.log = pool->log;
+
+    log.handler = ngx_aggr_log_error;
+    log.data = &log_ctx;
 
     key = ngx_hash_key(name->data, name->len);
 
     conf = ngx_hash_find(&acf->windows_hash, key, name->data, name->len);
     if (conf == NULL) {
-        ngx_log_error(NGX_LOG_ERR, pool->log, 0,
+        ngx_log_error(NGX_LOG_ERR, &log, 0,
             "ngx_aggr_query: unknown window \"%V\"", name);
         return NULL;
     }
 
-    ar = ngx_aggr_result_create(query, ngx_time(), NULL);
+    ar = ngx_aggr_result_create(query, &log, ngx_time(), NULL);
     if (ar == NULL) {
         return NULL;
     }
