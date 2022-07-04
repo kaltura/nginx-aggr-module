@@ -1086,27 +1086,6 @@ static ngx_aggr_filter_json_t  ngx_aggr_query_json_having[] = {
 };
 
 
-static ngx_json_value_t *
-ngx_aggr_filter_json_object_get(ngx_json_object_t *obj, ngx_str_t *name)
-{
-    ngx_uint_t             i, n;
-    ngx_json_key_value_t  *elts;
-
-    elts = obj->elts;
-    n = obj->nelts;
-
-    for (i = 0; i < n; i++) {
-        if (elts[i].key.len == name->len &&
-            ngx_strncmp(elts[i].key.data, name->data, name->len) == 0)
-        {
-            return &elts[i].value;
-        }
-    }
-
-    return NULL;
-}
-
-
 ngx_int_t
 ngx_aggr_filter_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj,
     ngx_aggr_filter_t *filter)
@@ -1116,7 +1095,7 @@ ngx_aggr_filter_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj,
     ngx_json_value_t        *value;
     ngx_aggr_filter_json_t  *cur;
 
-    value = ngx_aggr_filter_json_object_get(obj, &ngx_aggr_filter_type);
+    value = ngx_json_object_get(obj, &ngx_aggr_filter_type);
     if (value == NULL || value->type != NGX_JSON_STRING) {
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
             "ngx_aggr_filter_json: missing \"type\" property");

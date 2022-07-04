@@ -139,6 +139,13 @@ The following optional parameters can be specified:
 * `max_retries` - defines how many times to retry sending a failed message set, the default is 0.
 * `backoff_ms` - the back off time in milliseconds before retrying a message send, the default is 10.
 
+#### ip2l_file
+* **syntax**: `ip2l_file name file_path;`
+* **default**: `-`
+* **context**: `main`
+
+Loads an ip2location file that can be used for mapping ip addresses.
+
 ### dgram core directives
 
 #### dgram
@@ -521,6 +528,36 @@ Creates a new variable whose value depends on the value of the metric specified 
 The following special parameters are also supported:
 * `default` value - sets the resulting value if the source value doesn't match matches any of the specified ranges. When default is not specified, the default resulting value will be an empty string.
 
+#### map_ip2l
+* **syntax**: `map_ip2l ip_address file field $variable;`
+* **default**: `-`
+* **context**: `query`
+
+Creates a new variable whose value is an ip2location field from the record associated with the supplied ip address.
+* The `ip_address` parameter can contain variables, and should evaluate to either an ipv4 or ipv6 address.
+* The `file` parameter must contain the name of an ip2location file loaded using the `ip2l_file` directive.
+* The `field` parameter must be one of the following -
+    * `country`
+    * `country_code`
+    * `region`
+    * `city`
+    * `isp`
+    * `latitude`
+    * `longitude`
+    * `domain`
+    * `zipcode`
+    * `timezone`
+    * `netspeed`
+    * `iddcode`
+    * `areacode`
+    * `weatherstationcode`
+    * `weatherstationname`
+    * `mcc`
+    * `mnc`
+    * `mobilebrand`
+    * `elevation`
+    * `usagetype`
+
 #### format
 * **syntax**: `format json|prom;`
 * **default**: `-`
@@ -747,12 +784,50 @@ The following optional properties can be specified:
 * **default**: `-`
 * **context**: `query`
 
-An object containing map objects, each map object creates a variable by mapping one or more input dimensions. The variables can then be used as dimensions / in filters.
+An object containing map objects, each map object creates a variable by mapping one or more input values. The variables can then be used as dimensions / in filters.
 The keys of the maps object are the names of the variables, and must start with `"$"`.
 
-The following properties are required for each map object in the array:
+#### map_dim
+* **syntax**: `{ "type": "dim", "input": "string", "values": { ... } }`
+* **default**: `-`
+* **context**: `maps`
+
+The following properties are required:
 * `input` - string, a complex expression containing variables (e.g. `$dim_name`) that is matched against the map `values`.
 * `values` - object, holds the input values and the resulting values. The keys are either simple strings, or regular expressions (prefixed with `"~"`). The values are strings, and can be either simple strings or complex expressions containing variables. See the description of the map directive above for more details.
+
+The `type` property is optional - the default type is `dim`.
+
+#### map_ip2l
+* **syntax**: `{ "type": "ip2l", "input": "string", "file": "ip2l_file", "field": "ip2l_field" }`
+* **default**: `-`
+* **context**: `maps`
+
+The following properties are required:
+* `type` - string, value must be `ip2l`.
+* `input` - string, a complex expression containing variables (e.g. `$dim_name`) that evaluates to either an ipv4 or ipv6 address.
+* `file` - string, must contain the name of an ip2location file loaded using the `ip2l_file` directive.
+* `field` - string, the name of the ip2location field, the following values are supported -
+    * `country`
+    * `country_code`
+    * `region`
+    * `city`
+    * `isp`
+    * `latitude`
+    * `longitude`
+    * `domain`
+    * `zipcode`
+    * `timezone`
+    * `netspeed`
+    * `iddcode`
+    * `areacode`
+    * `weatherstationcode`
+    * `weatherstationname`
+    * `mcc`
+    * `mnc`
+    * `mobilebrand`
+    * `elevation`
+    * `usagetype`
 
 #### filter
 * **syntax**: `"filter": { ... }`

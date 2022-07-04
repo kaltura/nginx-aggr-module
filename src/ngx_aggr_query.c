@@ -2,6 +2,7 @@
 #include <ngx_core.h>
 #include "ngx_aggr.h"
 #include "ngx_aggr_map.h"
+#include "ngx_aggr_map_ip2l.h"
 
 
 static void *ngx_aggr_query_create(ngx_aggr_query_init_t *init);
@@ -162,6 +163,10 @@ static ngx_str_t  ngx_aggr_query_metric_type_names[] = {
     ngx_string("max"),
     ngx_null_string
 };
+
+
+static ngx_str_t  ngx_aggr_map_type = ngx_string("type");
+static ngx_str_t  ngx_aggr_map_default_type = ngx_string("dim");
 
 
 static ngx_uint_t  ngx_aggr_max_module = 0;
@@ -1682,6 +1687,64 @@ ngx_aggr_query_block(ngx_conf_t *cf, ngx_flag_t do_init)
 }
 
 
+static ngx_int_t
+ngx_aggr_query_maps_json(ngx_aggr_query_init_t *init, ngx_json_object_t *obj)
+{
+    ngx_int_t              rc;
+    ngx_str_t             *type;
+    ngx_uint_t             i, n;
+    ngx_json_value_t      *value;
+    ngx_json_object_t     *map_obj;
+    ngx_json_key_value_t  *elts;
+
+    elts = obj->elts;
+    n = obj->nelts;
+
+    for (i = 0; i < n; i++) {
+        if (elts[i].value.type != NGX_JSON_OBJECT) {
+            ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
+                "ngx_aggr_query_maps_json: invalid map object type");
+            return NGX_BAD_QUERY;
+        }
+
+        map_obj = &elts[i].value.v.obj;
+
+        value = ngx_json_object_get(map_obj, &ngx_aggr_map_type);
+        if (value == NULL) {
+            type = &ngx_aggr_map_default_type;
+
+        } else if (value->type == NGX_JSON_STRING) {
+            type = &value->v.str;
+
+        } else {
+            ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
+                "ngx_aggr_query_maps_json: invalid \"type\" property");
+            return NGX_BAD_QUERY;
+        }
+
+        if (ngx_str_equals_c(*type, "dim")) {
+            rc = ngx_aggr_map_json(init, &elts[i].key, map_obj);
+            if (rc != NGX_OK) {
+                return rc;
+            }
+
+        } else if (ngx_str_equals_c(*type, "ip2l")) {
+            rc = ngx_aggr_map_ip2l_json(init, &elts[i].key, map_obj);
+            if (rc != NGX_OK) {
+                return rc;
+            }
+
+        } else {
+            ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
+                "ngx_aggr_query_maps_json: invalid map type \"%V\"", type);
+            return NGX_BAD_QUERY;
+        }
+    }
+
+    return NGX_OK;
+}
+
+
 ngx_int_t
 ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
     ngx_json_value_t *json, ngx_aggr_query_t *base, ngx_aggr_query_t **result)
@@ -1759,7 +1822,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
                 continue;
 
             } else if (ngx_str_equals_c(elts[i].key, "maps")) {
-                rc = ngx_aggr_maps_json(&init, &elts[i].value.v.obj);
+                rc = ngx_aggr_query_maps_json(&init, &elts[i].value.v.obj);
                 if (rc != NGX_OK) {
                     return rc;
                 }
