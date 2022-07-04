@@ -750,3 +750,23 @@ error:
     error[error_size - 1] = '\0';   /* make sure it's null terminated */
     return rc;
 }
+
+ngx_json_value_t *
+ngx_json_object_get(ngx_json_object_t *obj, ngx_str_t *name)
+{
+    ngx_uint_t             i, n;
+    ngx_json_key_value_t  *elts;
+
+    elts = obj->elts;
+    n = obj->nelts;
+
+    for (i = 0; i < n; i++) {
+        if (elts[i].key.len == name->len &&
+            ngx_strncmp(elts[i].key.data, name->data, name->len) == 0)
+        {
+            return &elts[i].value;
+        }
+    }
+
+    return NULL;
+}

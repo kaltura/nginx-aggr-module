@@ -7,6 +7,7 @@ AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr.h                      \
                 $ngx_addon_dir/src/ngx_aggr_config.h               \
                 $ngx_addon_dir/src/ngx_aggr_filter.h               \
                 $ngx_addon_dir/src/ngx_aggr_map.h                  \
+                $ngx_addon_dir/src/ngx_aggr_map_ip2l.h             \
                 $ngx_addon_dir/src/ngx_aggr_output.h               \
                 $ngx_addon_dir/src/ngx_aggr_query.h                \
                 $ngx_addon_dir/src/ngx_aggr_result.h               \
@@ -16,6 +17,7 @@ AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr.h                      \
                 $ngx_addon_dir/src/ngx_dgram.h                     \
                 $ngx_addon_dir/src/ngx_dgram_script.h              \
                 $ngx_addon_dir/src/ngx_dgram_variables.h           \
+                $ngx_addon_dir/src/ngx_ip2l.h                      \
                 $ngx_addon_dir/src/ngx_json_parser.h               \
                 $ngx_addon_dir/src/ngx_rate_limit.h                \
                 $ngx_addon_dir/src/ngx_str_table.h                 \
@@ -23,6 +25,7 @@ AGGR_CORE_DEPS="$ngx_addon_dir/src/ngx_aggr.h                      \
 
 AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr.c                      \
                 $ngx_addon_dir/src/ngx_aggr_map.c                  \
+                $ngx_addon_dir/src/ngx_aggr_map_ip2l.c             \
                 $ngx_addon_dir/src/ngx_aggr_map_metric.c           \
                 $ngx_addon_dir/src/ngx_aggr_filter.c               \
                 $ngx_addon_dir/src/ngx_aggr_output.c               \
@@ -36,13 +39,16 @@ AGGR_CORE_SRCS="$ngx_addon_dir/src/ngx_aggr.c                      \
                 $ngx_addon_dir/src/ngx_dgram_core_module.c         \
                 $ngx_addon_dir/src/ngx_dgram_script.c              \
                 $ngx_addon_dir/src/ngx_dgram_variables.c           \
+                $ngx_addon_dir/src/ngx_ip2l.c                      \
                 $ngx_addon_dir/src/ngx_json_parser.c               \
                 $ngx_addon_dir/src/ngx_str_table.c                 \
                 "
 
-AGGR_CORE_MODS="ngx_aggr_module                                    \
+AGGR_CORE_MODS="ngx_ip2l_module                                    \
+                ngx_aggr_module                                    \
                 ngx_aggr_output_module                             \
                 ngx_aggr_filter_module                             \
+                ngx_aggr_map_ip2l_module                           \
                 ngx_aggr_map_module                                \
                 ngx_aggr_map_metric_module                         \
                 ngx_aggr_query_module                              \

@@ -225,8 +225,10 @@ ngx_aggr_query(ngx_pool_t *pool, ngx_cycle_t *cycle, ngx_str_t *name,
         return NULL;
     }
 
-    if (ngx_aggr_window_process(conf->window, pool, ar) != NGX_OK) {
-        goto failed;
+    if (conf->window != NULL) {
+        if (ngx_aggr_window_process(conf->window, pool, ar) != NGX_OK) {
+            goto failed;
+        }
     }
 
     last = ngx_aggr_result_write(ar, pool, last, size);
