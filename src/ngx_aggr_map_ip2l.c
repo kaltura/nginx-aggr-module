@@ -213,26 +213,26 @@ ngx_aggr_map_ip2l_json(ngx_aggr_query_init_t *init, ngx_str_t *output,
         }
 
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-            "ngx_aggr_map_json: invalid parameter \"%V\"",
+            "ngx_aggr_map_ip2l_json: invalid parameter \"%V\"",
             &elts[i].key);
         return NGX_BAD_QUERY;
     }
 
     if (input == NULL) {
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-            "ngx_aggr_map_json: missing \"input\" key");
+            "ngx_aggr_map_ip2l_json: missing \"input\" key");
         return NGX_BAD_QUERY;
     }
 
     if (file == NULL) {
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-            "ngx_aggr_map_json: missing \"file\" key");
+            "ngx_aggr_map_ip2l_json: missing \"file\" key");
         return NGX_BAD_QUERY;
     }
 
     if (field == NULL) {
         ngx_log_error(NGX_LOG_ERR, init->pool->log, 0,
-            "ngx_aggr_map_json: missing \"field\" key");
+            "ngx_aggr_map_ip2l_json: missing \"field\" key");
         return NGX_BAD_QUERY;
     }
 

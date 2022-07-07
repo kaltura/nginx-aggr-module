@@ -175,7 +175,7 @@ ngx_aggr_map_range(ngx_pool_t *pool, ngx_str_t *input,
     p = ngx_strlchr(input->data, last, ':');
     if (p == NULL) {
         ngx_log_error(NGX_LOG_ERR, pool->log, 0,
-            "ngx_aggr_map_metric_add_value: "
+            "ngx_aggr_map_range: "
             "invalid range \"%V\", missing ':'", input);
         return NGX_BAD_QUERY;
     }
@@ -202,7 +202,7 @@ ngx_aggr_map_range(ngx_pool_t *pool, ngx_str_t *input,
 
     if (elt->min >= elt->max) {
         ngx_log_error(NGX_LOG_ERR, pool->log, 0,
-            "ngx_aggr_map_metric_add_value: "
+            "ngx_aggr_map_range: "
             "invalid range \"%V\", lower bound must be less than upper",
             input);
         return NGX_BAD_QUERY;
