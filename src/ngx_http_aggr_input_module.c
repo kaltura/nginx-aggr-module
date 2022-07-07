@@ -354,7 +354,7 @@ append:
 
 
 static ngx_int_t
-ngx_http_aggr_input_do_process(ngx_http_request_t *r, ngx_uint_t do_read)
+ngx_http_aggr_input_do_process(ngx_http_request_t *r)
 {
     ngx_int_t     rc;
     ngx_buf_t    *b;
@@ -389,10 +389,6 @@ ngx_http_aggr_input_do_process(ngx_http_request_t *r, ngx_uint_t do_read)
             ngx_free_chain(r->pool, ln);
         }
 
-        if (!do_read) {
-            return NGX_AGAIN;
-        }
-
         rc = ngx_http_read_unbuffered_request_body(r);
 
         if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
@@ -417,7 +413,7 @@ ngx_http_aggr_input_read_handler(ngx_http_request_t *r)
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
         "ngx_http_aggr_input_read_handler: called");
 
-    rc = ngx_http_aggr_input_do_process(r, 1);
+    rc = ngx_http_aggr_input_do_process(r);
     if (rc == NGX_AGAIN) {
         return;
     }
@@ -458,12 +454,12 @@ ngx_http_aggr_input_handler(ngx_http_request_t *r)
 
     if (r->request_body == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-            "ngx_http_aggr_input_client_body_handler: "
+            "ngx_http_aggr_input_handler: "
             "%V request body is unavailable", &r->method_name);
         rc = NGX_HTTP_INTERNAL_SERVER_ERROR;
 
     } else {
-        rc = ngx_http_aggr_input_do_process(r, 0);
+        rc = ngx_http_aggr_input_do_process(r);
     }
 
     if (rc != NGX_AGAIN) {
