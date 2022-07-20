@@ -448,7 +448,7 @@ ngx_dgram_get_variable(ngx_dgram_session_t *s, ngx_str_t *name,
 
 static ngx_int_t
 ngx_dgram_variable_binary_remote_addr(ngx_dgram_session_t *s,
-     ngx_dgram_variable_value_t *v, uintptr_t data)
+    ngx_dgram_variable_value_t *v, uintptr_t data)
 {
     struct sockaddr_in   *sin;
 #if (NGX_HAVE_INET6)

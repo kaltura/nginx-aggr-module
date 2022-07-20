@@ -865,6 +865,7 @@ ngx_dgram_init_worker(ngx_cycle_t *cycle)
     return NGX_OK;
 }
 
+
 static void
 ngx_dgram_exit_worker(ngx_cycle_t *cycle)
 {

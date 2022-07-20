@@ -21,8 +21,9 @@ typedef struct {
 static ngx_inline ngx_flag_t
 ngx_rate_limit(ngx_rate_limit_ctx_t *ctx)
 {
-    time_t  now = ngx_time();
+    time_t  now;
 
+    now = ngx_time();
     if (now < ctx->reset_time || now >= ctx->reset_time + ctx->interval) {
         ctx->reset_time = now;
         ctx->left = ctx->limit;

@@ -196,7 +196,7 @@ ngx_aggr_map_ip2l_json(ngx_aggr_query_init_t *init, ngx_str_t *output,
         case NGX_JSON_STRING:
             if (ngx_str_equals_c(elts[i].key, "type")) {
                 continue;
-                
+
             } else if (ngx_str_equals_c(elts[i].key, "input")) {
                 input = &elts[i].value.v.str;
                 continue;

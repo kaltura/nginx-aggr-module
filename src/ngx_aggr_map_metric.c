@@ -167,9 +167,9 @@ static ngx_int_t
 ngx_aggr_map_range(ngx_pool_t *pool, ngx_str_t *input,
     ngx_aggr_map_metric_elt_t *elt)
 {
-    u_char  *last;
-    u_char  *p;
-    ngx_int_t  rc;
+    u_char     *last;
+    u_char     *p;
+    ngx_int_t   rc;
 
     last = input->data + input->len;
     p = ngx_strlchr(input->data, last, ':');

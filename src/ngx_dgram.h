@@ -140,20 +140,20 @@ typedef struct {
 #define ngx_dgram_delete_ctx(s, module)       s->ctx[module.ctx_index] = NULL;
 
 
-#define ngx_dgram_get_module_main_conf(s, module)                              \
+#define ngx_dgram_get_module_main_conf(s, module)                            \
     (s)->main_conf[module.ctx_index]
-#define ngx_dgram_get_module_srv_conf(s, module)                               \
+#define ngx_dgram_get_module_srv_conf(s, module)                             \
     (s)->srv_conf[module.ctx_index]
 
-#define ngx_dgram_conf_get_module_main_conf(cf, module)                        \
+#define ngx_dgram_conf_get_module_main_conf(cf, module)                      \
     ((ngx_dgram_conf_ctx_t *) cf->ctx)->main_conf[module.ctx_index]
-#define ngx_dgram_conf_get_module_srv_conf(cf, module)                         \
+#define ngx_dgram_conf_get_module_srv_conf(cf, module)                       \
     ((ngx_dgram_conf_ctx_t *) cf->ctx)->srv_conf[module.ctx_index]
 
-#define ngx_dgram_cycle_get_module_main_conf(cycle, module)                    \
-    (cycle->conf_ctx[ngx_dgram_module.index] ?                                 \
-        ((ngx_dgram_conf_ctx_t *) cycle->conf_ctx[ngx_dgram_module.index])     \
-            ->main_conf[module.ctx_index]:                                     \
+#define ngx_dgram_cycle_get_module_main_conf(cycle, module)                  \
+    (cycle->conf_ctx[ngx_dgram_module.index] ?                               \
+        ((ngx_dgram_conf_ctx_t *) cycle->conf_ctx[ngx_dgram_module.index])   \
+            ->main_conf[module.ctx_index]:                                   \
         NULL)
 
 

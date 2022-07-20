@@ -138,6 +138,7 @@ ngx_kafka_producer_conf_set_int(ngx_pool_t *pool, rd_kafka_conf_t *rkc,
     return NGX_OK;
 }
 
+
 static ngx_int_t
 ngx_kafka_producer_conf_set_str(ngx_pool_t *pool, rd_kafka_conf_t *rkc,
     const char *key, ngx_str_t *str)
@@ -162,6 +163,7 @@ ngx_kafka_producer_conf_set_str(ngx_pool_t *pool, rd_kafka_conf_t *rkc,
 
     return NGX_OK;
 }
+
 
 static rd_kafka_conf_res_t
 ngx_kafka_producer_topic_conf_set_str(ngx_pool_t *pool,
@@ -230,6 +232,7 @@ ngx_kafka_producer_topic_init(ngx_kafka_producer_topic_t *kpt,
 
     return NGX_OK;
 }
+
 
 static void
 ngx_kafka_producer_topic_destroy(ngx_kafka_producer_topic_t *kpt)

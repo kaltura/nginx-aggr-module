@@ -317,6 +317,7 @@ ngx_http_aggr_input_process(ngx_http_request_t *r, ngx_chain_t *out)
     if (rc != NGX_OK) {
         return rc;
     }
+
     b->last = b->start;
 
     for (ln = out; ln != cl; ln = ln->next) {
@@ -549,6 +550,7 @@ ngx_http_aggr_input_create_loc_conf(ngx_conf_t *cf)
 
     return conf;
 }
+
 
 static char *
 ngx_http_aggr_input_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)

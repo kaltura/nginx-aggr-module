@@ -22,7 +22,7 @@ void ngx_aggr_outputs_push(ngx_aggr_outputs_arr_t *conf,
 char *ngx_aggr_output_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 #if (NGX_HAVE_LIBRDKAFKA)
-char * ngx_aggr_output_kafka(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+char *ngx_aggr_output_kafka(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 #endif
 
 #endif /* _NGX_AGGR_OUTPUT_H_INCLUDED_ */

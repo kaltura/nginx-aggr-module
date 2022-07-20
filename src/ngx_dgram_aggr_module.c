@@ -262,6 +262,7 @@ ngx_dgram_aggr_create_srv_conf(ngx_conf_t *cf)
     return conf;
 }
 
+
 static char *
 ngx_dgram_aggr_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 {
