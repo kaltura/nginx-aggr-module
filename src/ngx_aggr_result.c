@@ -6,10 +6,10 @@
 #include "ngx_rate_limit.h"
 
 
-#define NGX_AGGR_RESULT_STATUS_FORMAT                                       \
-    "aggr_event_processed %A\n"                                             \
-    "aggr_event_parse_ok %A\n"                                              \
-    "aggr_event_parse_err %A\n"                                             \
+#define NGX_AGGR_RESULT_STATUS_FORMAT                                        \
+    "aggr_event_processed %A\n"                                              \
+    "aggr_event_parse_ok %A\n"                                               \
+    "aggr_event_parse_err %A\n"                                              \
     "aggr_event_created %A\n"
 
 
@@ -69,6 +69,7 @@ ngx_aggr_event_alloc(ngx_aggr_result_t *ar)
     return NGX_OK;
 }
 
+
 static int
 ngx_aggr_event_compare(ngx_aggr_event_t *event1, ngx_aggr_event_t *event2)
 {
@@ -96,6 +97,7 @@ ngx_aggr_event_compare(ngx_aggr_event_t *event1, ngx_aggr_event_t *event2)
 
     return 0;
 }
+
 
 static void
 ngx_aggr_event_rbtree_insert_value(ngx_rbtree_node_t *temp,
@@ -129,6 +131,7 @@ ngx_aggr_event_rbtree_insert_value(ngx_rbtree_node_t *temp,
     node->right = sentinel;
     ngx_rbt_red(node);
 }
+
 
 static ngx_aggr_event_t *
 ngx_aggr_event_rbtree_lookup(ngx_rbtree_t *rbtree, ngx_aggr_event_t *event)
@@ -207,18 +210,18 @@ ngx_aggr_result_temp_alloc(ngx_aggr_result_t *ar, size_t size)
 #define NGX_AGGR_EVENT_JSON_SKIP_SPACES  (0)
 
 
-#define ngx_aggr_event_json_expect_char(ctx, c)                             \
-    if (*ctx->p != c) {                                                     \
-        ngx_snprintf(ctx->err, ctx->err_size, "expected '%c'%Z", c);        \
-        return NGX_ERROR;                                                   \
-    }                                                                       \
+#define ngx_aggr_event_json_expect_char(ctx, c)                              \
+    if (*ctx->p != c) {                                                      \
+        ngx_snprintf(ctx->err, ctx->err_size, "expected '%c'%Z", c);         \
+        return NGX_ERROR;                                                    \
+    }                                                                        \
     ctx->p++;
 
 
 
 #if (NGX_AGGR_EVENT_JSON_SKIP_SPACES)
 
-#define ngx_aggr_event_json_skip_spaces(ctx)                                \
+#define ngx_aggr_event_json_skip_spaces(ctx)                                 \
     for (; isspace(*(ctx)->p) && *(ctx)->p; (ctx)->p++);
 
 #else
@@ -764,6 +767,7 @@ ngx_aggr_event_update_metrics(ngx_aggr_event_t *dst, ngx_aggr_event_t *src,
             if (ngx_aggr_event_copy_select_dims(ar, dst) != NGX_OK) {
                 return NGX_ERROR;
             }
+
             update_selects = 0;
             break;
         }
@@ -796,6 +800,7 @@ ngx_aggr_event_json_parse_error(ngx_aggr_event_json_ctx_t *ctx, ngx_log_t *log,
         prefix = "...";
         extract.data = ctx->p - NGX_AGGR_EVENT_JSON_ERROR_EXTRACT;
     }
+
     extract.len = ctx->p - extract.data;
 
     if (*ctx->p != '\0') {
@@ -850,6 +855,7 @@ ngx_aggr_event_json_write_size(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
     return ar->query->write_size[ngx_aggr_query_fmt_json] +
         ngx_aggr_event_dim_size(ar, event);
 }
+
 
 static u_char *
 ngx_aggr_event_json_write(u_char *p, ngx_aggr_result_t *ar,
@@ -933,6 +939,7 @@ ngx_aggr_event_json_write(u_char *p, ngx_aggr_result_t *ar,
     return p;
 }
 
+
 static u_char *
 ngx_aggr_event_json_write_delim(u_char *p, ngx_aggr_result_t *ar,
     ngx_aggr_event_t *event)
@@ -950,6 +957,7 @@ ngx_aggr_event_prom_write_size(ngx_aggr_result_t *ar, ngx_aggr_event_t *event)
     return ar->query->write_size[ngx_aggr_query_fmt_prom] +
         ngx_aggr_event_dim_size(ar, event) * ar->query->metrics_out.nelts;
 }
+
 
 static u_char *
 ngx_aggr_event_prom_write(u_char *p, ngx_aggr_result_t *ar,

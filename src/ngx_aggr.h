@@ -6,11 +6,11 @@
 #include <ngx_core.h>
 
 
-#define ngx_str_equals(s1, s2)                                              \
+#define ngx_str_equals(s1, s2)                                               \
     ((s1).len == (s2).len && ngx_memcmp((s1).data, (s2).data, (s1).len) == 0)
 
-#define ngx_str_equals_c(ns, s)                                             \
-    ((ns).len == sizeof(s) - 1 &&                                           \
+#define ngx_str_equals_c(ns, s)                                              \
+    ((ns).len == sizeof(s) - 1 &&                                            \
      ngx_strncmp((ns).data, (s), sizeof(s) - 1) == 0)
 
 

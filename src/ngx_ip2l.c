@@ -19,6 +19,7 @@ typedef struct {
     u_char                  day;
 } ngx_ip2l_fmt_header_t;
 
+
 typedef struct {
     uint32_t                ipv4_count;
     uint32_t                ipv4_off;
@@ -27,6 +28,7 @@ typedef struct {
     uint32_t                ipv4_index_off;
     uint32_t                ipv6_index_off;
 } ngx_ip2l_fmt_layout_t;
+
 
 typedef struct {
     uint32_t                left;
@@ -43,10 +45,12 @@ typedef struct {
     ngx_ip2l_fmt_index_t   *index;
 } ngx_ip2l_db_t;
 
+
 typedef struct {
     u_char                  cols;
     char                    fields[ngx_ip2l_field_count];
 } ngx_ip2l_file_spec_t;
+
 
 struct ngx_ip2l_file_s {
     ngx_str_t               name;
@@ -56,6 +60,7 @@ struct ngx_ip2l_file_s {
     ngx_ip2l_db_t           ipv4;
     ngx_ip2l_db_t           ipv6;
 };
+
 
 typedef struct {
     ngx_array_t             files;      /* ngx_ip2l_file_t * */
@@ -349,6 +354,7 @@ ngx_ip2l_file_lookup(ngx_ip2l_file_t *file, ngx_str_t *ip)
         return ngx_ip2l_db_ipv4_lookup(&file->ipv4, inaddr);
 
 #if (NGX_HAVE_INET6)
+
     } else if (ngx_inet6_addr(ip->data, ip->len, inaddr6.s6_addr) == NGX_OK) {
 
         if (IN6_IS_ADDR_V4MAPPED(&inaddr6)) {
@@ -365,6 +371,7 @@ ngx_ip2l_file_lookup(ngx_ip2l_file_t *file, ngx_str_t *ip)
         return ngx_ip2l_db_ipv6_lookup(&file->ipv6, inaddr6.s6_addr);
 
 #endif
+
     } else {
         return NULL;
     }
@@ -420,6 +427,7 @@ ngx_ip2l_file_get_string(ngx_ip2l_file_t *file, ngx_pool_t *pool,
     return NGX_OK;
 }
 
+
 static ngx_int_t
 ngx_ip2l_file_get_country_long(ngx_ip2l_file_t *file, ngx_pool_t *pool,
     void *in, ngx_str_t *out)
@@ -453,6 +461,7 @@ ngx_ip2l_file_get_country_long(ngx_ip2l_file_t *file, ngx_pool_t *pool,
 
     return NGX_OK;
 }
+
 
 static ngx_int_t
 ngx_ip2l_file_get_float(ngx_ip2l_file_t *file, ngx_pool_t *pool,
@@ -592,7 +601,7 @@ ngx_ip2l_file_init(ngx_conf_t *cf, ngx_ip2l_file_t *file)
     if (layout.ipv4_index_off > 0) {
         layout.ipv4_index_off--;      /* 1-based */
 
-        if (size < NGX_IP2L_INDEX_SIZE 
+        if (size < NGX_IP2L_INDEX_SIZE
             || layout.ipv4_index_off > size - NGX_IP2L_INDEX_SIZE)
         {
             ngx_conf_log_error(NGX_LOG_CRIT, cf, 0,

@@ -10,24 +10,24 @@
 #define NGX_JSON_PART_MAX_SIZE          (65536)
 
 
-#define ASSERT_CHAR(state, ch)                                      \
-    if (*(state)->cur_pos != ch) {                                  \
-        ngx_snprintf(state->error, state->error_size,               \
-            "expected 0x%xd got 0x%xd%Z",                           \
-            (int) ch, (int) *(state)->cur_pos);                     \
-        return NGX_JSON_BAD_DATA;                                   \
+#define ASSERT_CHAR(state, ch)                                               \
+    if (*(state)->cur_pos != ch) {                                           \
+        ngx_snprintf(state->error, state->error_size,                        \
+            "expected 0x%xd got 0x%xd%Z",                                    \
+            (int) ch, (int) *(state)->cur_pos);                              \
+        return NGX_JSON_BAD_DATA;                                            \
     }
 
-#define EXPECT_CHAR(state, ch)                                      \
-    ASSERT_CHAR(state, ch)                                          \
+#define EXPECT_CHAR(state, ch)                                               \
+    ASSERT_CHAR(state, ch)                                                   \
     (state)->cur_pos++;
 
-#define EXPECT_STRING(state, str)                                   \
-    if (ngx_strncmp((state)->cur_pos, str, sizeof(str) - 1) != 0) { \
-        ngx_snprintf(state->error, state->error_size,               \
-            "expected %s%Z", str);                                  \
-        return NGX_JSON_BAD_DATA;                                   \
-    }                                                               \
+#define EXPECT_STRING(state, str)                                            \
+    if (ngx_strncmp((state)->cur_pos, str, sizeof(str) - 1) != 0) {          \
+        ngx_snprintf(state->error, state->error_size,                        \
+            "expected %s%Z", str);                                           \
+        return NGX_JSON_BAD_DATA;                                            \
+    }                                                                        \
     (state)->cur_pos += sizeof(str) - 1;
 
 
@@ -38,6 +38,7 @@ typedef struct {
     u_char              *error;
     size_t               error_size;
 } ngx_json_parser_state_t;
+
 
 typedef struct {
     int                  type;
@@ -65,17 +66,21 @@ static ngx_json_type_t  ngx_json_string = {
     NGX_JSON_STRING, sizeof(ngx_str_t), ngx_json_parser_string
 };
 
+
 static ngx_json_type_t  ngx_json_array = {
     NGX_JSON_ARRAY, sizeof(ngx_json_array_t), ngx_json_parser_array
 };
+
 
 static ngx_json_type_t  ngx_json_object = {
     NGX_JSON_OBJECT, sizeof(ngx_json_object_t), ngx_json_parser_object
 };
 
+
 static ngx_json_type_t  ngx_json_bool = {
     NGX_JSON_BOOL, sizeof(ngx_flag_t), ngx_json_parser_bool
 };
+
 
 static ngx_json_type_t  ngx_json_number = {
     NGX_JSON_NUMBER, sizeof(double), ngx_json_parser_number
@@ -188,6 +193,7 @@ ngx_json_decode_string(ngx_json_parser_state_t *state, ngx_str_t *str)
                     "failed to decode \"%*s\"%Z", (size_t) 6, src - 1);
                 return NGX_JSON_BAD_DATA;
             }
+
             src += 4;
             break;
 
@@ -237,11 +243,13 @@ ngx_json_get_value_type(ngx_json_parser_state_t *state,
     return NGX_JSON_OK;
 }
 
+
 static void
 ngx_json_skip_spaces(ngx_json_parser_state_t *state)
 {
     for (; *state->cur_pos && isspace(*state->cur_pos); state->cur_pos++);
 }
+
 
 static ngx_json_status_t
 ngx_json_parse_string(ngx_json_parser_state_t *state, ngx_str_t *result)
@@ -270,6 +278,7 @@ ngx_json_parse_string(ngx_json_parser_state_t *state, ngx_str_t *result)
                     "end of data while parsing string (1)%Z");
                 return NGX_JSON_BAD_DATA;
             }
+
             decode = 1;
             break;
 
@@ -291,6 +300,7 @@ ngx_json_parse_string(ngx_json_parser_state_t *state, ngx_str_t *result)
         "end of data while parsing string (2)%Z");
     return NGX_JSON_BAD_DATA;
 }
+
 
 static ngx_json_status_t
 ngx_json_parse_object_key(ngx_json_parser_state_t *state,
@@ -321,6 +331,7 @@ ngx_json_parse_object_key(ngx_json_parser_state_t *state,
                     "end of data while parsing string (1)%Z");
                 return NGX_JSON_BAD_DATA;
             }
+
             decode = 1;
             break;
 
@@ -345,6 +356,7 @@ ngx_json_parse_object_key(ngx_json_parser_state_t *state,
         "end of data while parsing string (2)%Z");
     return NGX_JSON_BAD_DATA;
 }
+
 
 static ngx_json_status_t
 ngx_json_skip_num(ngx_json_parser_state_t *state)
@@ -426,6 +438,7 @@ ngx_json_parse_number(ngx_json_parser_state_t *state, double *result)
     return NGX_JSON_OK;
 }
 
+
 static ngx_json_status_t
 ngx_json_parse_array(ngx_json_parser_state_t *state, ngx_json_array_t *result)
 {
@@ -456,6 +469,7 @@ ngx_json_parse_array(ngx_json_parser_state_t *state, ngx_json_array_t *result)
             "max recursion depth exceeded%Z");
         return NGX_JSON_BAD_DATA;
     }
+
     state->depth++;
 
     rc = ngx_json_get_value_type(state, &type);
@@ -474,6 +488,7 @@ ngx_json_parse_array(ngx_json_parser_state_t *state, ngx_json_array_t *result)
     if (cur_item == NULL) {
         return NGX_JSON_ALLOC_FAILED;
     }
+
     part->first = cur_item;
     part->last = (u_char *) cur_item + part_size;
 
@@ -542,6 +557,7 @@ done:
     return NGX_JSON_OK;
 }
 
+
 static ngx_json_status_t
 ngx_json_parse_object(ngx_json_parser_state_t *state,
     ngx_json_object_t *result)
@@ -568,6 +584,7 @@ ngx_json_parse_object(ngx_json_parser_state_t *state,
             "max recursion depth exceeded%Z");
         return NGX_JSON_BAD_DATA;
     }
+
     state->depth++;
 
     rc = ngx_array_init(result, state->pool, 5, sizeof(*cur_item));
@@ -622,12 +639,14 @@ ngx_json_parse_object(ngx_json_parser_state_t *state,
     }
 }
 
+
 static ngx_json_status_t
 ngx_json_parser_string(ngx_json_parser_state_t *state, void *result)
 {
     ASSERT_CHAR(state, '"');
     return ngx_json_parse_string(state, (ngx_str_t *) result);
 }
+
 
 static ngx_json_status_t
 ngx_json_parser_array(ngx_json_parser_state_t *state, void *result)
@@ -636,12 +655,14 @@ ngx_json_parser_array(ngx_json_parser_state_t *state, void *result)
     return ngx_json_parse_array(state, (ngx_json_array_t *) result);
 }
 
+
 static ngx_json_status_t
 ngx_json_parser_object(ngx_json_parser_state_t *state, void *result)
 {
     ASSERT_CHAR(state, '{');
     return ngx_json_parse_object(state, (ngx_json_object_t *) result);
 }
+
 
 static ngx_json_status_t
 ngx_json_parser_bool(ngx_json_parser_state_t *state, void *result)
@@ -663,11 +684,13 @@ ngx_json_parser_bool(ngx_json_parser_state_t *state, void *result)
     return NGX_JSON_BAD_DATA;
 }
 
+
 static ngx_json_status_t
 ngx_json_parser_number(ngx_json_parser_state_t *state, void *result)
 {
     return ngx_json_parse_number(state, (double *) result);
 }
+
 
 static ngx_json_status_t
 ngx_json_parse_value(ngx_json_parser_state_t *state, ngx_json_value_t *result)
@@ -716,6 +739,7 @@ ngx_json_parse_value(ngx_json_parser_state_t *state, ngx_json_value_t *result)
     }
 }
 
+
 ngx_json_status_t
 ngx_json_parse(ngx_pool_t *pool, u_char *string, ngx_json_value_t *result,
     u_char *error, size_t error_size)
@@ -750,6 +774,7 @@ error:
     error[error_size - 1] = '\0';   /* make sure it's null terminated */
     return rc;
 }
+
 
 ngx_json_value_t *
 ngx_json_object_get(ngx_json_object_t *obj, ngx_str_t *name)

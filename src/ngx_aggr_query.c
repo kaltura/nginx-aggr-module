@@ -173,7 +173,7 @@ static ngx_uint_t  ngx_aggr_max_module = 0;
 
 
 /* a copy of ngx_hash_init with ngx_strlow replaced by ngx_memcpy */
-#define NGX_HASH_ELT_SIZE(name)                                             \
+#define NGX_HASH_ELT_SIZE(name)                                              \
     (sizeof(void *) + ngx_align((name)->key.len + 2, sizeof(void *)))
 
 static ngx_int_t
@@ -518,6 +518,7 @@ ngx_aggr_query_dim_input_get(ngx_aggr_query_t *query,
 
     return NULL;
 }
+
 
 ngx_aggr_query_dim_in_t *
 ngx_aggr_query_dim_input_add(ngx_aggr_query_t *query,
@@ -1110,6 +1111,7 @@ ngx_aggr_query_metric_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                 if (minus) {
                     top = -top;
                 }
+
                 continue;
             }
         }
@@ -1554,6 +1556,7 @@ ngx_aggr_query_init(ngx_aggr_query_init_t *init, void *conf)
     return NGX_OK;
 }
 
+
 static ngx_int_t
 ngx_aggr_query_preconfiguration(ngx_aggr_query_init_t *init)
 {
@@ -1794,6 +1797,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
                 if (rc != NGX_OK) {
                     return rc;
                 }
+
                 continue;
 
             } else if (ngx_str_equals_c(elts[i].key, "metrics")) {
@@ -1801,6 +1805,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
                 if (rc != NGX_OK) {
                     return rc;
                 }
+
                 continue;
 
             } else if (ngx_str_equals_c(elts[i].key, "filter")) {
@@ -1810,6 +1815,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
                 if (rc != NGX_OK) {
                     return rc;
                 }
+
                 continue;
 
             } else if (ngx_str_equals_c(elts[i].key, "having")) {
@@ -1819,6 +1825,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
                 if (rc != NGX_OK) {
                     return rc;
                 }
+
                 continue;
 
             } else if (ngx_str_equals_c(elts[i].key, "maps")) {
@@ -1826,6 +1833,7 @@ ngx_aggr_query_json(ngx_pool_t *pool, ngx_pool_t *temp_pool,
                 if (rc != NGX_OK) {
                     return rc;
                 }
+
                 continue;
             }
 
